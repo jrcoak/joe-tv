@@ -1,28 +1,26 @@
 import Foundation
-import Security
 
 enum EPGServiceError: LocalizedError {
-    case notPaired
-    case invalidPairingCode
-    case pairingRejected
-    case authorizationExpired
+    case configuration(MediaAPIConfigurationError)
+    case authorizationInvalid
+    case serviceNotConfigured
+    case refreshThrottled
     case guideNotPublished
     case invalidGuide
     case sportsScheduleNotPublished
     case invalidSportsSchedule
-    case credentialStorage(Int32)
     case serverStatus(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notPaired:
-            return "Connect guide data to see current and upcoming programs."
-        case .invalidPairingCode:
-            return "Enter the six-digit code from the Personal Media API dashboard."
-        case .pairingRejected:
-            return "That pairing code is invalid or has expired. Generate a new code and try again."
-        case .authorizationExpired:
-            return "The guide connection was revoked. Connect this Apple TV again."
+        case .configuration(let error):
+            return error.localizedDescription
+        case .authorizationInvalid:
+            return "Schedule access was rejected. This build's MEDIA_READ_TOKEN is missing, stale, or different from the API configuration."
+        case .serviceNotConfigured:
+            return "Schedule data is not configured on the Personal Media API deployment."
+        case .refreshThrottled:
+            return "Schedule data was checked recently. Try again in a few minutes."
         case .guideNotPublished:
             return "Guide data has not been published yet. Try again later."
         case .invalidGuide:
@@ -31,98 +29,13 @@ enum EPGServiceError: LocalizedError {
             return "Sports schedule data has not been published yet. Try again later."
         case .invalidSportsSchedule:
             return "The sports schedule service returned data that could not be read."
-        case .credentialStorage(let status):
-            return "This build could not save the guide credential in Keychain (status \(status)). Reinstall a signed build and pair again."
         case .serverStatus(let status):
-            return "The guide service returned status \(status)."
+            return "The schedule service returned status \(status)."
         }
     }
 }
 
-final class EPGDeviceTokenStore: @unchecked Sendable {
-    private let service = "com.seasonstv.personal-media-api.device-token"
-    private let account = "paired-device"
-    private let lock = NSLock()
-    private var memoryToken: String?
-
-    func read() -> String? {
-        lock.lock()
-        let cachedToken = memoryToken
-        lock.unlock()
-        if let cachedToken { return cachedToken }
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let token = String(data: data, encoding: .utf8),
-              !token.isEmpty else { return nil }
-        lock.lock()
-        memoryToken = token
-        lock.unlock()
-        return token
-    }
-
-    func save(_ token: String) throws {
-        guard let data = token.data(using: .utf8) else {
-            throw EPGServiceError.credentialStorage(errSecParam)
-        }
-        let identity: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        let attributes: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        ]
-        let updateStatus = SecItemUpdate(identity as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecItemNotFound {
-            var insertion = identity
-            attributes.forEach { insertion[$0.key] = $0.value }
-            let insertionStatus = SecItemAdd(insertion as CFDictionary, nil)
-            guard insertionStatus == errSecSuccess else {
-                throw EPGServiceError.credentialStorage(insertionStatus)
-            }
-        } else if updateStatus != errSecSuccess {
-            throw EPGServiceError.credentialStorage(updateStatus)
-        }
-        lock.lock()
-        memoryToken = token
-        lock.unlock()
-    }
-
-    func delete() {
-        lock.lock()
-        memoryToken = nil
-        lock.unlock()
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
-}
-
-actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProviding {
-    private struct PairingRequest: Encodable {
-        let code: String
-        let deviceName: String
-    }
-
-    private struct PairingResponse: Decodable {
-        let token: String
-        let deviceName: String
-    }
-
-    private static let serviceBaseURL = URL(string: "https://personal-media-api.vercel.app")!
+actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
     private static let minimumRefreshInterval: TimeInterval = 5 * 60
     private static let etagKey = "epg.xmltv.etag"
     private static let lastRefreshKey = "epg.xmltv.lastRefresh"
@@ -131,11 +44,10 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
     private static let sportsLastRefreshKey = "sports.schedule.lastRefresh"
     private static let sportsLastAttemptKey = "sports.schedule.lastAttempt"
 
-    nonisolated var isPaired: Bool { tokenStore.read() != nil }
-
-    private nonisolated let tokenStore: EPGDeviceTokenStore
     private let session: URLSession
     private let defaults: UserDefaults
+    private let configuration: MediaAPIConfiguration?
+    private let configurationError: MediaAPIConfigurationError?
     private let cacheURL: URL
     private let sportsCacheURL: URL
     private var lastRefresh: Date?
@@ -146,11 +58,20 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
     init(
         session: URLSession = .shared,
         defaults: UserDefaults = .standard,
-        tokenStore: EPGDeviceTokenStore = EPGDeviceTokenStore()
+        bundle: Bundle = .main
     ) {
         self.session = session
         self.defaults = defaults
-        self.tokenStore = tokenStore
+        do {
+            self.configuration = try MediaAPIConfiguration.bundled(bundle)
+            self.configurationError = nil
+        } catch let error as MediaAPIConfigurationError {
+            self.configuration = nil
+            self.configurationError = error
+        } catch {
+            self.configuration = nil
+            self.configurationError = .missingReadToken
+        }
         self.lastRefresh = defaults.object(forKey: Self.lastRefreshKey) as? Date
         self.lastAttempt = defaults.object(forKey: Self.lastAttemptKey) as? Date
         self.sportsLastRefresh = defaults.object(forKey: Self.sportsLastRefreshKey) as? Date
@@ -161,55 +82,15 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
         self.sportsCacheURL = cacheDirectory.appending(path: "seasonstv-sports-schedule.json")
     }
 
-    func pair(code: String, deviceName: String) async throws {
-        let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedCode.range(of: #"^\d{6}$"#, options: .regularExpression) != nil else {
-            throw EPGServiceError.invalidPairingCode
-        }
-
-        let url = Self.serviceBaseURL.appending(path: "/api/v1/pairing/exchange")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONEncoder().encode(
-            PairingRequest(code: normalizedCode, deviceName: deviceName)
-        )
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw EPGServiceError.pairingRejected
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            if [400, 401, 404, 409, 410].contains(httpResponse.statusCode) {
-                throw EPGServiceError.pairingRejected
-            }
-            throw EPGServiceError.serverStatus(httpResponse.statusCode)
-        }
-        guard let result = try? JSONDecoder().decode(PairingResponse.self, from: data),
-              !result.token.isEmpty else {
-            throw EPGServiceError.pairingRejected
-        }
-        try tokenStore.save(result.token)
-        lastRefresh = nil
-        lastAttempt = nil
-        sportsLastRefresh = nil
-        sportsLastAttempt = nil
-    }
-
-    nonisolated func disconnect() {
-        tokenStore.delete()
-    }
-
     func loadGuide(
         for channels: [LiveChannel],
         from start: Date,
         to end: Date
     ) async throws -> (window: EPGGuideWindow, mappings: [ChannelStationMapping]) {
-        guard let token = tokenStore.read() else { throw EPGServiceError.notPaired }
+        let configuration = try requireConfiguration()
         let mappings = ChannelDirectory.explicitMappings(for: channels)
         let stationIDs = Set(mappings.map(\.stationID))
-        let data = try await currentGuideData(token: token)
+        let data = try await currentGuideData(configuration: configuration)
         let programs = try XMLTVParser.parse(
             data: data,
             from: start,
@@ -228,8 +109,8 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
     }
 
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot {
-        guard let token = tokenStore.read() else { throw EPGServiceError.notPaired }
-        let data = try await currentSportsScheduleData(token: token)
+        let configuration = try requireConfiguration()
+        let data = try await currentSportsScheduleData(configuration: configuration)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
@@ -239,26 +120,30 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
         }
     }
 
-    private func currentGuideData(token: String) async throws -> Data {
+    private func requireConfiguration() throws -> MediaAPIConfiguration {
+        if let configuration { return configuration }
+        throw EPGServiceError.configuration(configurationError ?? .missingReadToken)
+    }
+
+    private func currentGuideData(configuration: MediaAPIConfiguration) async throws -> Data {
         let cachedData = try? Data(contentsOf: cacheURL)
         if let lastAttempt,
            Date().timeIntervalSince(lastAttempt) < Self.minimumRefreshInterval {
-            guard let cachedData else { throw EPGServiceError.invalidGuide }
+            guard let cachedData else { throw EPGServiceError.refreshThrottled }
             return cachedData
         }
 
-        let url = Self.serviceBaseURL.appending(path: "/api/v1/guide/xmltv")
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/xml", forHTTPHeaderField: "Accept")
+        var request = MediaAPIRequestBuilder.makeRequest(
+            configuration: configuration,
+            route: .guideXMLTV
+        )
         if let etag = defaults.string(forKey: Self.etagKey), !etag.isEmpty {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
         recordAttempt()
 
         do {
-            for attempt in 0..<2 {
-                let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw EPGServiceError.invalidGuide
             }
@@ -276,18 +161,14 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
                 recordRefresh()
                 return cachedData
             case 401:
-                if attempt == 0 {
-                    try await Task.sleep(for: .milliseconds(750))
-                    continue
-                }
-                throw EPGServiceError.authorizationExpired
+                throw EPGServiceError.authorizationInvalid
             case 404:
                 throw EPGServiceError.guideNotPublished
+            case 503:
+                throw EPGServiceError.serviceNotConfigured
             default:
                 throw EPGServiceError.serverStatus(httpResponse.statusCode)
             }
-            }
-            throw EPGServiceError.authorizationExpired
         } catch {
             if error is EPGServiceError { throw error }
             if let cachedData { return cachedData }
@@ -295,55 +176,50 @@ actor XMLTVGuideProvider: EPGProviding, EPGPairingProviding, SportsScheduleProvi
         }
     }
 
-    private func currentSportsScheduleData(token: String) async throws -> Data {
+    private func currentSportsScheduleData(configuration: MediaAPIConfiguration) async throws -> Data {
         let cachedData = try? Data(contentsOf: sportsCacheURL)
         if let sportsLastAttempt,
            Date().timeIntervalSince(sportsLastAttempt) < Self.minimumRefreshInterval {
-            guard let cachedData else { throw EPGServiceError.invalidSportsSchedule }
+            guard let cachedData else { throw EPGServiceError.refreshThrottled }
             return cachedData
         }
 
-        let url = Self.serviceBaseURL.appending(path: "/api/v1/sports/schedule")
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        var request = MediaAPIRequestBuilder.makeRequest(
+            configuration: configuration,
+            route: .sportsSchedule
+        )
         if let etag = defaults.string(forKey: Self.sportsETagKey), !etag.isEmpty {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
         recordSportsAttempt()
 
         do {
-            for attempt in 0..<2 {
-                let (data, response) = try await session.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    throw EPGServiceError.invalidSportsSchedule
-                }
-                switch httpResponse.statusCode {
-                case 200:
-                    guard !data.isEmpty else { throw EPGServiceError.invalidSportsSchedule }
-                    try data.write(to: sportsCacheURL, options: .atomic)
-                    if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
-                        defaults.set(etag, forKey: Self.sportsETagKey)
-                    }
-                    recordSportsRefresh()
-                    return data
-                case 304:
-                    guard let cachedData else { throw EPGServiceError.invalidSportsSchedule }
-                    recordSportsRefresh()
-                    return cachedData
-                case 401:
-                    if attempt == 0 {
-                        try await Task.sleep(for: .milliseconds(750))
-                        continue
-                    }
-                    throw EPGServiceError.authorizationExpired
-                case 404:
-                    throw EPGServiceError.sportsScheduleNotPublished
-                default:
-                    throw EPGServiceError.serverStatus(httpResponse.statusCode)
-                }
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw EPGServiceError.invalidSportsSchedule
             }
-            throw EPGServiceError.authorizationExpired
+            switch httpResponse.statusCode {
+            case 200:
+                guard !data.isEmpty else { throw EPGServiceError.invalidSportsSchedule }
+                try data.write(to: sportsCacheURL, options: .atomic)
+                if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                    defaults.set(etag, forKey: Self.sportsETagKey)
+                }
+                recordSportsRefresh()
+                return data
+            case 304:
+                guard let cachedData else { throw EPGServiceError.invalidSportsSchedule }
+                recordSportsRefresh()
+                return cachedData
+            case 401:
+                throw EPGServiceError.authorizationInvalid
+            case 404:
+                throw EPGServiceError.sportsScheduleNotPublished
+            case 503:
+                throw EPGServiceError.serviceNotConfigured
+            default:
+                throw EPGServiceError.serverStatus(httpResponse.statusCode)
+            }
         } catch {
             if error is EPGServiceError { throw error }
             if let cachedData { return cachedData }

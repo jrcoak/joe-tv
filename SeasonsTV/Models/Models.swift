@@ -302,13 +302,6 @@ protocol EPGProviding {
     ) async throws -> (window: EPGGuideWindow, mappings: [ChannelStationMapping])
 }
 
-protocol EPGPairingProviding {
-    var isPaired: Bool { get }
-
-    func pair(code: String, deviceName: String) async throws
-    func disconnect()
-}
-
 protocol SportsScheduleProviding {
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot
 }

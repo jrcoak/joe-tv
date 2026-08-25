@@ -36,6 +36,43 @@ enum ParserSmoke {
             fatalError("Default Sports category order changed")
         }
 
+        let mediaReadToken = String(repeating: "a", count: 32)
+        guard let mediaConfiguration = try? MediaAPIConfiguration.values(
+            baseURLValue: "https://personal-media-api.example",
+            readTokenValue: mediaReadToken
+        ),
+              mediaConfiguration.baseURL.host == "personal-media-api.example",
+              mediaConfiguration.readToken == mediaReadToken else {
+            fatalError("Valid private media-read configuration was rejected")
+        }
+        let guideRequest = MediaAPIRequestBuilder.makeRequest(
+            configuration: mediaConfiguration,
+            route: .guideXMLTV
+        )
+        let sportsRequest = MediaAPIRequestBuilder.makeRequest(
+            configuration: mediaConfiguration,
+            route: .sportsSchedule
+        )
+        guard guideRequest.httpMethod == "GET",
+              guideRequest.url?.path == "/api/v1/guide/xmltv",
+              guideRequest.value(forHTTPHeaderField: "Authorization") == "Bearer \(mediaReadToken)",
+              guideRequest.value(forHTTPHeaderField: "Accept") == "application/xml",
+              sportsRequest.url?.path == "/api/v1/sports/schedule",
+              sportsRequest.value(forHTTPHeaderField: "Accept") == "application/json" else {
+            fatalError("MEDIA_READ_TOKEN was not scoped to the expected schedule GET requests")
+        }
+        do {
+            _ = try MediaAPIConfiguration.values(
+                baseURLValue: "https://personal-media-api.example",
+                readTokenValue: "$(MEDIA_READ_TOKEN)"
+            )
+            fatalError("Placeholder MEDIA_READ_TOKEN should be rejected")
+        } catch MediaAPIConfigurationError.missingReadToken {
+            // Expected: unconfigured builds fail clearly at runtime.
+        } catch {
+            fatalError("Unexpected media-read configuration error: \(error)")
+        }
+
         let sportsScheduleJSON = Data(#"""
         {
           "provider": "ESPN",

@@ -128,8 +128,6 @@ private struct LoginView: View {
 private struct CatalogView: View {
     @EnvironmentObject private var model: AppModel
     @State private var confirmsSignOut = false
-    @State private var confirmsGuideDisconnect = false
-    @State private var showsGuidePairing = false
     @State private var showsSportsCategorySettings = false
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
@@ -173,19 +171,6 @@ private struct CatalogView: View {
         } message: {
             Text("This removes the local Seasons4U session from this Apple TV.")
         }
-        .confirmationDialog(
-            "Disconnect guide data?",
-            isPresented: $confirmsGuideDisconnect,
-            titleVisibility: .visible
-        ) {
-            Button("Disconnect", role: .destructive) { model.disconnectEPG() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the paired-device credential from this Apple TV. Seasons4U playback is unaffected.")
-        }
-        .sheet(isPresented: $showsGuidePairing) {
-            EPGPairingView()
-        }
         .sheet(isPresented: $showsSportsCategorySettings) {
             SportsCategorySettingsView()
         }
@@ -218,22 +203,13 @@ private struct CatalogView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                if model.isEPGPaired {
-                    Button {
-                        Task {
-                            await model.loadEPG(around: Date())
-                            await model.loadSportsSchedule()
-                        }
-                    } label: {
-                        Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
+                Button {
+                    Task {
+                        await model.loadEPG(around: Date())
+                        await model.loadSportsSchedule()
                     }
-                    Button(role: .destructive) { confirmsGuideDisconnect = true } label: {
-                        Label("Disconnect Schedule Data", systemImage: "calendar.badge.minus")
-                    }
-                } else {
-                    Button { showsGuidePairing = true } label: {
-                        Label("Connect Schedule Data", systemImage: "calendar.badge.plus")
-                    }
+                } label: {
+                    Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
                 }
                 Button { showsSportsCategorySettings = true } label: {
                     Label("Sports Categories", systemImage: "slider.horizontal.3")
@@ -283,82 +259,6 @@ private struct CatalogView: View {
 
     private func focusCurrentDestination() {
         focusedDestination = model.destination
-    }
-}
-
-private struct EPGPairingView: View {
-    @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var code = ""
-    @FocusState private var codeFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 18) {
-                Image(systemName: "calendar.badge.plus")
-                    .font(.system(size: 42, weight: .semibold))
-                    .foregroundStyle(SeasonTheme.accent)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Connect schedule data")
-                        .font(.system(size: 42, weight: .semibold))
-                    Text("Live TV programming and sports event details")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Text("Generate a six-digit pairing code in the Personal Media API admin dashboard, then enter it here within ten minutes.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            TextField("Six-digit code", text: $code)
-                .textContentType(.oneTimeCode)
-                .font(.title2.monospacedDigit().weight(.semibold))
-                .focused($codeFocused)
-                .onChange(of: code) { _, value in
-                    let digits = value.filter(\.isNumber)
-                    code = String(digits.prefix(6))
-                }
-                .onSubmit(connect)
-                .accessibilityIdentifier("epg.pairingCode")
-
-            if code.count == 6 {
-                Label("Six-digit code entered", systemImage: "checkmark.circle.fill")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 16) {
-                Button(action: connect) {
-                    if model.isPairingEPG {
-                        ProgressView()
-                    } else {
-                        Label("Connect", systemImage: "link")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(code.count != 6 || model.isPairingEPG)
-                .accessibilityIdentifier("epg.connect")
-
-                Button("Cancel", role: .cancel) { dismiss() }
-            }
-        }
-        .padding(54)
-        .frame(width: 760)
-        .background(SeasonTheme.background)
-        .onAppear { codeFocused = true }
-    }
-
-    private func connect() {
-        guard code.count == 6 else { return }
-        codeFocused = false
-        Task {
-            if await model.pairEPG(code: code) {
-                code = ""
-                dismiss()
-            }
-        }
     }
 }
 
@@ -476,6 +376,11 @@ private struct LiveTVBrowseView: View {
         }
     }
 
+    private var guideErrorMessage: String? {
+        guard case .failed(let message, _) = model.epgState else { return nil }
+        return message
+    }
+
     var body: some View {
         if model.liveChannels.isEmpty, let error = model.channelState.errorMessage {
             StatePanel(
@@ -490,6 +395,12 @@ private struct LiveTVBrowseView: View {
                     if let error = model.channelState.errorMessage {
                         InlineStatusBanner(message: "Showing the previous lineup. \(error)") {
                             Task { await model.reload() }
+                        }
+                    }
+
+                    if let guideErrorMessage {
+                        InlineStatusBanner(message: "Programming details are unavailable. \(guideErrorMessage)") {
+                            Task { await model.loadEPG(around: Date()) }
                         }
                     }
 
@@ -1498,6 +1409,13 @@ private struct SportsView: View {
                 if let error = model.eventState.errorMessage, !model.visibleSportsCategories.isEmpty {
                     InlineStatusBanner(message: "Events could not be refreshed. Showing the previous catalog. \(error)") {
                         Task { await model.reload() }
+                    }
+                    .frame(width: contentWidth)
+                }
+
+                if let error = model.sportsScheduleState.errorMessage {
+                    InlineStatusBanner(message: "Sports details are unavailable. \(error)") {
+                        Task { await model.loadSportsSchedule() }
                     }
                     .frame(width: contentWidth)
                 }

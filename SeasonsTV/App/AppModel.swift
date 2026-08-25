@@ -24,8 +24,6 @@ final class AppModel: ObservableObject {
     @Published var lastFocusedLiveID: String?
     @Published var lastFocusedEventID: String?
     @Published var epgState: EPGLoadState = .unavailable
-    @Published var isEPGPaired = false
-    @Published var isPairingEPG = false
     @Published private(set) var enabledSportsCategoryIDs: Set<String>
     @Published private(set) var sportsSchedule: SportsScheduleSnapshot?
     @Published var sportsScheduleState: ContentLoadState = .idle
@@ -40,7 +38,6 @@ final class AppModel: ObservableObject {
 
     let client: SeasonsClient
     private let epgProvider: EPGProviding?
-    private let epgPairingProvider: EPGPairingProviding?
     private let sportsScheduleProvider: SportsScheduleProviding?
     private let defaults: UserDefaults
     private var playbackCategories: [CatalogCategory] = []
@@ -59,15 +56,14 @@ final class AppModel: ObservableObject {
     ) {
         self.client = client
         self.epgProvider = epgProvider
-        self.epgPairingProvider = epgProvider as? EPGPairingProviding
         self.sportsScheduleProvider = epgProvider as? SportsScheduleProviding
         self.defaults = defaults
+        LegacyScheduleCredentialCleanup.run(defaults: defaults)
         if let stored = defaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
             self.enabledSportsCategoryIDs = Set(stored)
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
-        self.isEPGPaired = self.epgPairingProvider?.isPaired ?? false
         Task { await restoreSession() }
     }
 
@@ -194,41 +190,6 @@ final class AppModel: ObservableObject {
         await refreshEPG(for: liveChannels, around: date)
     }
 
-    func pairEPG(code: String) async -> Bool {
-        guard let epgPairingProvider else {
-            errorMessage = "Guide pairing is not available in this build."
-            return false
-        }
-        isPairingEPG = true
-        errorMessage = nil
-        defer { isPairingEPG = false }
-        do {
-            try await epgPairingProvider.pair(
-                code: code,
-                deviceName: "SeasonsTV Apple TV"
-            )
-            isEPGPaired = true
-            await refreshEPG(for: liveChannels, around: Date())
-            await refreshSportsSchedule()
-            return true
-        } catch {
-            errorMessage = error.localizedDescription
-            return false
-        }
-    }
-
-    func disconnectEPG() {
-        epgPairingProvider?.disconnect()
-        isEPGPaired = false
-        epgState = .unavailable
-        channelStationMappings = [:]
-        epgRequestID = UUID()
-        sportsSchedule = nil
-        sportsScheduleState = .idle
-        sportsScheduleRequestID = UUID()
-        categories = playbackCategories
-    }
-
     func loadSportsSchedule() async {
         await refreshSportsSchedule()
     }
@@ -240,11 +201,6 @@ final class AppModel: ObservableObject {
             sportsScheduleState = .idle
             return
         }
-        guard isEPGPaired || epgPairingProvider == nil else {
-            sportsScheduleState = .idle
-            return
-        }
-
         sportsScheduleState = .loading
         do {
             let snapshot = try await sportsScheduleProvider.loadSportsSchedule()
@@ -255,9 +211,6 @@ final class AppModel: ObservableObject {
             sportsScheduleState = .loaded
         } catch {
             guard sportsScheduleRequestID == requestID else { return }
-            if case EPGServiceError.authorizationExpired = error {
-                errorMessage = error.localizedDescription
-            }
             sportsScheduleState = .failed(error.localizedDescription)
         }
     }
@@ -278,13 +231,6 @@ final class AppModel: ObservableObject {
             channelStationMappings = [:]
             return
         }
-        guard isEPGPaired || epgPairingProvider == nil else {
-            isEPGPaired = false
-            epgState = .unavailable
-            channelStationMappings = [:]
-            return
-        }
-
         let cached: EPGGuideWindow? = {
             switch epgState {
             case .loaded(let window): return window
@@ -306,9 +252,6 @@ final class AppModel: ObservableObject {
             epgState = .loaded(result.window)
         } catch {
             guard epgRequestID == requestID else { return }
-            if case EPGServiceError.authorizationExpired = error {
-                errorMessage = error.localizedDescription
-            }
             epgState = .failed(message: error.localizedDescription, cached: cached)
         }
     }

@@ -21,10 +21,12 @@ The documentation-first audit and approved redesign have been implemented to the
 - Added nonblocking refresh feedback and source-specific inline recovery.
 - Added task-specific sign-in and playback-preparation overlays.
 - Added provider-neutral EPG programs, time windows, mapping provenance, loading state, and repository protocol.
-- Connected the EPG boundary to the production Personal Media API XMLTV endpoint with six-digit device pairing, Keychain token storage, gzip-aware URLSession retrieval, a strict five-minute polling floor, ETag/304 revalidation, and an atomic last-known-good XML cache.
+- Connected the EPG boundary to the production Personal Media API XMLTV endpoint with a private build-injected `MEDIA_READ_TOKEN`, gzip-aware URLSession retrieval, a strict five-minute polling floor, ETag/304 revalidation, and an atomic last-known-good XML cache.
 - Replaced the open-ended DRM lineup with the supplied 66-channel product directory, combining UUID-backed `/PlayerDRMChannels` entries with legacy `/Player#channels` `bkb`/`hky` playback identities.
 - Added authoritative numeric XMLTV station mappings and canonical call signs; runtime program matching never relies on channel display names.
-- Added Connect, Refresh, and Disconnect Schedule Data actions without coupling the shared paired-device credential to Seasons4U sign-in or sign-out.
+- Removed television pairing, pairing-code exchange, and paired-token Keychain storage; schedule metadata now refreshes automatically using the route-limited app credential without coupling it to Seasons4U sign-in or sign-out.
+- Added an ignored private xcconfig workflow, committed empty template, Info.plist build-setting expansion, and a Release build guard that rejects missing, short, or placeholder tokens.
+- Added a one-time upgrade cleanup for only the obsolete schedule Keychain item plus visible configuration/service errors that preserve playback.
 - Integrated the normalized sports schedule endpoint with its own five-minute polling floor, ETag/304 revalidation, and atomic last-known-good JSON cache.
 - Enriched Seasons4U sports playback rows with schedule status, scores, broadcasters, thumbnails, and high-resolution team logos while preserving Seasons4U as the playback authority.
 - Added persistent Sports Categories settings; Football, Baseball, Hockey, and Basketball are enabled by default, and enabled categories remain stable even when the current schedule window is empty.
@@ -50,7 +52,8 @@ The documentation-first audit and approved redesign have been implemented to the
 - Unsigned generic physical tvOS Debug build passes.
 - Unsigned generic physical tvOS Release build passes.
 - Xcode simulator build and launch pass on Apple TV 4K (3rd generation), 1080p, tvOS 26.5.
-- A production six-digit pairing exchange succeeded in the signed Simulator build; the curated 66-channel lineup populated with current/upcoming XMLTV programs, descriptions, and progress, and the Keychain credential plus cached guide survived app reinstall and cold relaunch.
+- Media API configuration validation, missing-token behavior, the Release build guard, parser/enrichment smoke coverage, and a tokenless Debug simulator build pass without exposing a credential.
+- A signed physical Apple TV build successfully played the available FairPlay streams; extended hardware playback testing remains.
 - Live TV row focus, Right-entry into Up Next, Left-return to the originating channel, disclosure dismissal, direct channel selection, and Back-to-navigation were exercised with production XMLTV data.
 - Siri Remote directional navigation was walked through Live TV rails, native search open/cancel, destination switching, the Sports vertical event list and detail actions, bounded playback failure, native Back, recovery Select, and originating-row focus restoration.
 - Static review found no credentials, cookies, signed streams, license headers, SPC, or CKC values committed or logged.
@@ -58,8 +61,8 @@ The documentation-first audit and approved redesign have been implemented to the
 
 ## External Validation Gates
 
-- Production EPG implementation and device-token restoration are validated; extended observation of repeated 200/304 cycles, stale-cache fallback, and every mapped station remains a release-validation gate.
-- FairPlay remains a physical-device release gate and requires signing, an entitled Seasons4U account, suitable network/region conditions, and live domestic/international channels.
+- The matching private `MEDIA_READ_TOKEN` still needs end-to-end Simulator and physical Apple TV validation against the updated API. Repeated 200/304 cycles, stale-cache fallback, and every mapped station remain release-validation gates.
+- FairPlay initially works on physical hardware but still requires long-duration, interruption, error, domestic, and international validation under suitable network/region conditions.
 - App icon, top shelf, production bundle identity, privacy/distribution review, and provider authorization remain release work rather than interface implementation.
 
 ## Required Final Device Matrix

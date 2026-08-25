@@ -20,6 +20,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>MediaAPIBaseURL</key>
+	<string>$(MEDIA_API_BASE_URL)</string>
+	<key>MediaReadToken</key>
+	<string>$(MEDIA_READ_TOKEN)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

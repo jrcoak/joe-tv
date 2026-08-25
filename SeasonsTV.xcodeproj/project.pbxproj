@@ -19,6 +19,7 @@
 		AA000000000000000000000E /* ChannelDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000E /* ChannelDirectory.swift */; };
 		AA000000000000000000000F /* XMLTVGuideProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* XMLTVGuideProvider.swift */; };
 		AA0000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000009 /* Assets.xcassets */; };
+		AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* MediaAPIConfiguration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +38,9 @@
 		BB000000000000000000000D /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		BB000000000000000000000E /* ChannelDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelDirectory.swift; sourceTree = "<group>"; };
 		BB000000000000000000000F /* XMLTVGuideProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLTVGuideProvider.swift; sourceTree = "<group>"; };
+		BB0000000000000000000010 /* MediaAPIConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaAPIConfiguration.swift; sourceTree = "<group>"; };
+		BB0000000000000000000011 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000012 /* Private.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Private.example.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				CC0000000000000000000002 /* SeasonsTV */,
+				CC000000000000000000000A /* Config */,
 				BB000000000000000000000C /* README.md */,
 				CC0000000000000000000008 /* Products */,
 			);
@@ -95,6 +100,7 @@
 			children = (
 				BB0000000000000000000004 /* SeasonsClient.swift */,
 				BB0000000000000000000005 /* HTMLCatalogParser.swift */,
+				BB0000000000000000000010 /* MediaAPIConfiguration.swift */,
 				BB000000000000000000000F /* XMLTVGuideProvider.swift */,
 			);
 			path = Networking;
@@ -135,6 +141,15 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		CC000000000000000000000A /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000000000000000000011 /* Shared.xcconfig */,
+				BB0000000000000000000012 /* Private.example.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -142,6 +157,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C30000000000000000000001 /* Build configuration list for PBXNativeTarget "SeasonsTV" */;
 			buildPhases = (
+				FF0000000000000000000004 /* Validate Media API Configuration */,
 				FF0000000000000000000002 /* Sources */,
 				FF0000000000000000000001 /* Frameworks */,
 				FF0000000000000000000003 /* Resources */,
@@ -199,6 +215,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		FF0000000000000000000004 /* Validate Media API Configuration */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Validate Media API Configuration";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/scripts/validate-media-read-token.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		FF0000000000000000000002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -215,6 +253,7 @@
 				AA000000000000000000000D /* DesignSystem.swift in Sources */,
 				AA000000000000000000000E /* ChannelDirectory.swift in Sources */,
 				AA000000000000000000000F /* XMLTVGuideProvider.swift in Sources */,
+				AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,10 +262,11 @@
 /* Begin XCBuildConfiguration section */
 		C10000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BB0000000000000000000011 /* Shared.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JTM69DV573;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeasonsTV/Resources/Info.plist;
 				MARKETING_VERSION = 1.0;
@@ -243,10 +283,11 @@
 		};
 		C10000000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = BB0000000000000000000011 /* Shared.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JTM69DV573;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeasonsTV/Resources/Info.plist;
 				MARKETING_VERSION = 1.0;

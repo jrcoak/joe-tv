@@ -10,8 +10,8 @@ For architecture, authentication, parser contracts, FairPlay behavior, design de
 - Cookie-backed authenticated sessions. Passwords are used only for the login request and are not persisted by the app.
 - Live catalog loading from `/Player`, including JSON-backed football and Baseball schedules, the lazy-loaded Baseball backup partial, historical server-rendered sports rows, standard streams, DRM variants, scheduled events, and remote artwork.
 - A curated 66-channel Live TV lineup assembled from both `/PlayerDRMChannels` and legacy `/Player#channels` playback actions, with stable playback identities, an offline 512-pixel channel-brand library, genre rails, search, and contextual focus metadata.
-- Production XMLTV guide data from Personal Media API, paired with a short-lived six-digit code and a permanent device token stored in Keychain. Guide refreshes use numeric station IDs, a five-minute floor, ETag revalidation, and a local last-known-good cache.
-- Production ESPN sports schedules from the same paired Personal Media API credential, with independent JSON/ETag caching. Schedule events enrich Seasons4U playback rows with league, score, status, broadcast networks, thumbnails, and high-resolution team logos without treating schedule data as a playback source.
+- Production XMLTV guide data from Personal Media API, authenticated by a private build-injected `MEDIA_READ_TOKEN`. Guide refreshes use numeric station IDs, a five-minute floor, ETag revalidation, and a local last-known-good cache.
+- Production ESPN sports schedules authenticated by the same route-limited read token, with independent JSON/ETag caching. Schedule events enrich Seasons4U playback rows with league, score, status, broadcast networks, thumbnails, and high-resolution team logos without treating schedule data as a playback source.
 - Now-playing metadata plus an on-demand **Up Next** disclosure on each focused channel; schedules stay out of the way until requested, and channel playback remains independent when guide data does not exist.
 - On-demand stream resolution through the site's authenticated `Watch_*` endpoints. Signed media URLs are kept only in memory.
 - Native HLS playback with `AVPlayer`.
@@ -24,12 +24,14 @@ For architecture, authentication, parser contracts, FairPlay behavior, design de
 1. Open `SeasonsTV.xcodeproj` in Xcode 26 or newer.
 2. Choose an Apple TV simulator or a signed Apple TV device target.
 3. Set your Development Team and replace the example bundle identifier if running on hardware.
-4. Build and sign in with your Seasons4U account inside the app.
-5. To enable TV programming and sports schedule data, choose **More → Connect Schedule Data** and enter a current six-digit code from the Personal Media API admin dashboard.
+4. Copy `Config/Private.example.xcconfig` to the ignored `Config/Private.xcconfig` and set the private `MEDIA_READ_TOKEN` used by the Personal Media API deployment.
+5. Build and sign in with your Seasons4U account inside the app. Guide and sports metadata load automatically; there is no television pairing flow.
+
+`Config/Private.xcconfig` must never be committed. Release builds fail when the token is missing, shorter than 32 characters, or still a placeholder. Debug builds remain buildable without it and show a configuration-oriented schedule error while preserving Seasons4U playback.
 
 ## Architecture notes
 
-The website combines server-rendered markup with AngularJS JSON schedule feeds and uses ASP.NET-style anti-forgery form authentication, JSON/XHR playback resolution, several browser players for ordinary HLS, and Bitmovin configuration for DRM. The native app deliberately does not embed the site or copy credentials, cookies, entitlement headers, signed stream URLs, or license tokens into source control.
+The website combines server-rendered markup with AngularJS JSON schedule feeds and uses ASP.NET-style anti-forgery form authentication, JSON/XHR playback resolution, several browser players for ordinary HLS, and Bitmovin configuration for DRM. The native app deliberately does not embed the site or copy credentials, cookies, entitlement headers, signed stream URLs, license tokens, or the Personal Media API read token into source control.
 
 The provider currently advertises Widevine, PlayReady, and FairPlay on its DRM pages. tvOS uses only the FairPlay/HLS branch. If a channel exposes only DASH/Widevine, the app reports that the channel has no compatible FairPlay stream; it does not attempt to bypass DRM.
 

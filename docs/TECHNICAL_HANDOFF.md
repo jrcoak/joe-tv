@@ -1,6 +1,6 @@
 # SeasonsTV Technical Handoff
 
-Last updated: August 14, 2026
+Last updated: August 15, 2026
 
 ## 1. Purpose and current scope
 
@@ -16,7 +16,7 @@ The app currently provides:
 - Native FairPlay Streaming (FPS) support for the DRM channel pages.
 - A tvOS-focused channel browser and absolute-time guide backed by production XMLTV data.
 
-EPG comes from the independent Personal Media API. It is authenticated with a paired-device token, cached and revalidated with ETags, parsed as XMLTV, and matched to playback channels exclusively by numeric station ID. Seasons4U remains the source of playback; independent EPG failure must never prevent playback.
+EPG comes from the independent Personal Media API. Guide and sports reads are authenticated with a private, app-scoped `MEDIA_READ_TOKEN` injected by the build, cached and revalidated with ETags, and matched to playback channels exclusively by numeric station ID. Seasons4U remains the source of playback; independent schedule failure must never prevent playback.
 
 The app is an independent client. It must only be used with an authorized account and in accordance with the provider's terms and applicable content rights. It does not attempt to circumvent DRM, geo-restrictions, subscription entitlements, or blackouts.
 
@@ -30,11 +30,11 @@ The app is an independent client. It must only be used with an authorized accoun
 - The curated channel directory, legacy channel identities, and XMLTV numeric mapping/window behavior have smoke-test coverage.
 - Selecting a channel invokes the app's playback action.
 - The native FairPlay request contract mirrors the authenticated website's contract.
+- A signed physical Apple TV build successfully played the available FairPlay streams during August 15 validation.
 - Simulator builds display an explanatory alert instead of opening a nonfunctional black FairPlay player.
 
 ### Not yet confirmed
 
-- End-to-end FairPlay playback on a signed physical Apple TV.
 - Login against every account state and server-side authentication variation.
 - App Store distribution, provisioning, or production bundle configuration.
 - Long-duration playback, stream switching, interruption recovery, or background behavior.
@@ -48,6 +48,9 @@ Physical-device validation requires a signed build, an entitled Seasons4U accoun
 ```text
 SeasonsTV.xcodeproj/
   project.pbxproj                 Xcode project and tvOS build settings
+Config/
+  Shared.xcconfig                 Non-secret API URL and optional private include
+  Private.example.xcconfig        Empty template; real Private.xcconfig is ignored
 SeasonsTV/
   App/
     SeasonsTVApp.swift            SwiftUI entry point
@@ -58,7 +61,8 @@ SeasonsTV/
   Networking/
     SeasonsClient.swift           Authentication, HTTP, payload building, stream resolution
     HTMLCatalogParser.swift       Server-rendered HTML/JavaScript contract parsing
-    XMLTVGuideProvider.swift      Pairing, Keychain credential, ETag cache, XMLTV parsing
+    MediaAPIConfiguration.swift   Private build configuration and legacy credential cleanup
+    XMLTVGuideProvider.swift      MEDIA_READ_TOKEN requests, ETag caches, XMLTV parsing
   Playback/
     FairPlayResourceLoader.swift  FPS certificate/SPC/CKC exchange
   Views/
@@ -72,6 +76,7 @@ Tests/
   ParserSmoke.swift               Standalone parser and payload smoke test
 scripts/
   import-channel-logos.sh         Rebuilds local channel assets from XMLTV icon entries
+  validate-media-read-token.sh    Rejects unconfigured Release builds
 README.md                         Short setup and feature summary
 docs/
   TECHNICAL_HANDOFF.md            This document
@@ -89,11 +94,19 @@ The single `SeasonsTV` application target has these important settings:
 | Deployment target | tvOS 17.0 | Chosen to allow modern SwiftUI/tvOS APIs. |
 | Swift language mode | Swift 5 | Set in the project file. |
 | Bundle identifier | `com.example.SeasonsTV` | Placeholder; replace before device distribution. |
-| Development team | Empty | A team must be selected for physical hardware. |
+| Development team | Configured locally | Confirm the intended team before physical distribution. |
 | Version | 1.0 (build 1) | Initial project version. |
 | Code signing | Automatic | Requires a configured Apple Developer team on hardware. |
 
 Open `SeasonsTV.xcodeproj` in Xcode 26 or newer, select the SeasonsTV scheme, and choose a tvOS destination.
+
+Guide and sports metadata require private build configuration:
+
+1. Copy `Config/Private.example.xcconfig` to `Config/Private.xcconfig`.
+2. Set `MEDIA_READ_TOKEN` to the same opaque, route-limited read token configured in the Personal Media API deployment.
+3. Keep `Private.xcconfig` uncommitted. CI may instead inject the build setting from its secret manager.
+
+`Config/Shared.xcconfig` supplies the non-secret base URL and optionally includes the private file. `Info.plist` exposes the expanded values to the app as `MediaAPIBaseURL` and `MediaReadToken`. Debug builds without a token remain usable for playback and show a clear schedule-configuration error. Release builds run `scripts/validate-media-read-token.sh` and fail when the token is missing, shorter than 32 characters, or a placeholder.
 
 Generic device compilation without signing (verified successfully on August 12, 2026):
 
@@ -135,7 +148,7 @@ AppModel (@MainActor, ObservableObject)
     |       +--> runtime DRM configuration
     |
     +--> XMLTVGuideProvider --> personal-media-api.vercel.app
-    |       +--> Keychain device token
+    |       +--> private MEDIA_READ_TOKEN build configuration
     |       +--> independent XMLTV + sports JSON ETag caches
     |
     +--> PlaybackSession
@@ -158,8 +171,8 @@ AppModel (@MainActor, ObservableObject)
 - `screen`: `.checkingSession`, `.signedOut`, or `.catalog`.
 - `categories`: parsed sports/events catalog.
 - `liveChannels`: available channels filtered and ordered by `ChannelDirectory`.
-- `isEPGPaired`, `epgState`, and `channelStationMappings`: independent guide authentication, load, and numeric mapping state.
-- `sportsSchedule` and `sportsScheduleState`: independent ESPN schedule metadata loaded with the same paired-device token.
+- `epgState` and `channelStationMappings`: independent guide load and numeric mapping state.
+- `sportsSchedule` and `sportsScheduleState`: independent ESPN schedule metadata loaded with the same app-scoped read token.
 - `enabledSportsCategoryIDs`: UserDefaults-backed category visibility; the first-run default is Football, Baseball, Hockey, and Basketball only.
 - `selectedCategoryID`: selected sports/events category, initially `football`.
 - `isWorking`: controls short blocking sign-in/playback preparation only; refresh is nonblocking.
@@ -204,7 +217,8 @@ Seasons4U uses server-rendered ASP.NET-style form authentication.
 ### Security decisions
 
 - Passwords are passed only to the login request and are not written to app storage.
-- The Personal Media API device token is a separate credential stored as a generic-password Keychain item with `AfterFirstUnlockThisDeviceOnly` accessibility. It is never stored in UserDefaults or logged.
+- The Personal Media API read token is injected from ignored local configuration or a CI secret, expanded into the private app artifact, and used only for the approved guide/sports GET routes. It is never committed or logged. The server limits it to read-only schedule access and can revoke it centrally.
+- A one-time upgrade cleanup deletes only the obsolete schedule pairing Keychain item. The app no longer reads or writes paired-device credentials.
 - Authentication cookies are managed by the system cookie store; no cookie or token values are committed to the repository.
 - Signed media URLs and runtime DRM values are kept in memory.
 - Debug FairPlay logging includes only an error domain and numeric code, never request URLs, headers, SPC/CKC bytes, cookies, or tokens.
@@ -239,9 +253,8 @@ The implementation is based on authenticated inspection of these routes:
 | `/PlayerDRMChannels` | Complete DRM channel lineup and playback page links. |
 | `/PlayerDRMChannels/{id}` | Per-channel HLS, FPS certificate, headers, and license behavior. |
 | `/PlayerDRMChannels/International/{id}` | International variant; may prefix the transformed license URL with a proxy route. |
-| `POST https://personal-media-api.vercel.app/api/v1/pairing/exchange` | Exchanges a ten-minute six-digit code for a permanent device token. |
-| `GET https://personal-media-api.vercel.app/api/v1/guide/xmltv` | Authenticated, gzip-encoded XMLTV document with ETag revalidation. |
-| `GET https://personal-media-api.vercel.app/api/v1/sports/schedule` | Authenticated normalized sports JSON with a separate ETag/cache lifecycle and no playback URLs. |
+| `GET https://personal-media-api.vercel.app/api/v1/guide/xmltv` | `MEDIA_READ_TOKEN`-authenticated, gzip-encoded XMLTV document with ETag revalidation. |
+| `GET https://personal-media-api.vercel.app/api/v1/sports/schedule` | `MEDIA_READ_TOKEN`-authenticated normalized sports JSON with a separate ETag/cache lifecycle and no playback URLs. |
 
 These are private implementation contracts rather than a documented public API. Every one should be treated as changeable.
 
@@ -375,34 +388,36 @@ FairPlay-protected video cannot be validated in the tvOS Simulator. During devel
 - Persistent/offline keys are not implemented and are out of current scope.
 - Do not add logging of SKD/license URLs or headers without redaction; they may contain entitlement-sensitive values.
 
-## 12. TV guide, sports schedule, and pairing
+## 12. TV guide, sports schedule, and private build authentication
 
-`XMLTVGuideProvider` implements `EPGProviding`, `EPGPairingProviding`, and `SportsScheduleProviding`. The Personal Media API is intentionally a separate authentication and failure domain from Seasons4U.
+`XMLTVGuideProvider` implements `EPGProviding` and `SportsScheduleProviding`. The Personal Media API is intentionally a separate authentication and failure domain from Seasons4U.
 
-### Pairing
+### Credential selection
 
-The user generates a six-digit code in the Personal Media API admin dashboard and enters it through **More → Connect Schedule Data**. The code is valid for ten minutes. The app posts it with the device name `SeasonsTV Apple TV` to `/api/v1/pairing/exchange`, stores the returned permanent token in Keychain, and never persists or logs the code or token elsewhere. Disconnect Schedule Data deletes only this Keychain item; it does not sign out of Seasons4U.
+This client calls only `/api/v1/guide/xmltv` and `/api/v1/sports/schedule` on the Personal Media API. Each request receives `Authorization: Bearer <MEDIA_READ_TOKEN>` individually; the token is not installed as a global `URLSession` header and is never sent to Seasons4U, publishing, pairing, discovery, history, feedback, or refresh routes. There is no television pairing screen or pairing-code exchange.
+
+`MediaAPIConfiguration` loads the base URL and token from the built app's Info.plist expansion and rejects a missing URL, a token shorter than 32 characters, or an unexpanded/placeholder value. This is source-control protection and an operational guard, not tamper-proof secret storage: a person with the private app bundle can extract the token. The server-side read-only route scope and central revocation boundary are therefore required.
 
 ### Retrieval and caching
 
-Guide requests send `Authorization: Bearer <device-token>` and `Accept: application/xml`. URLSession transparently decodes the response's gzip content encoding. The provider:
+Guide requests send the app-scoped bearer token and `Accept: application/xml`. URLSession transparently decodes the response's gzip content encoding. The provider:
 
 - never polls more frequently than once every five minutes;
 - stores the strong ETag in UserDefaults and sends `If-None-Match`;
 - writes the last successful decompressed XML document atomically into the Caches directory;
 - keeps the cached document on 304 and uses it as a network-failure fallback;
-- treats 404 as “not published” and reports a repeated 401 without deleting the consumed credential, leaving explicit Disconnect as the destructive recovery action;
-- retries one immediate 401 after 750 ms to tolerate a transient post-pair propagation race.
+- treats 404 as “not published,” 401 as a missing/stale/mismatched build token, and 503 as missing server configuration;
+- preserves playback and presents schedule configuration/service failures inline instead of redirecting to pairing.
 
-The ETag and refresh date are not secrets. The device token is never placed in UserDefaults or the XML cache.
+The ETag and refresh date are not secrets. The read token is never placed in UserDefaults or either cache.
 
-Sports schedule requests use the same bearer token but call `/api/v1/sports/schedule` with `Accept: application/json`. They have separate five-minute attempt tracking, ETag, refresh timestamp, and atomic last-known-good JSON cache. The decoded event model preserves league, teams, scores, status, time, venue, thumbnail, team logos, and broadcast networks. Schedule-only events use `.unavailable`; matching a schedule record to a Seasons4U item enriches presentation while preserving the Seasons4U playback identity and options. The UI prefers the schedule thumbnail, then composes high-resolution home/away logos, and uses Seasons4U artwork only as the last fallback.
+Sports schedule requests use the same route-limited read token but call `/api/v1/sports/schedule` with `Accept: application/json`. They have separate five-minute attempt tracking, ETag, refresh timestamp, and atomic last-known-good JSON cache. The decoded event model preserves league, teams, scores, status, time, venue, thumbnail, team logos, and broadcast networks. Schedule-only events use `.unavailable`; matching a schedule record to a Seasons4U item enriches presentation while preserving the Seasons4U playback identity and options. The UI prefers the schedule thumbnail, then composes high-resolution home/away logos, and uses Seasons4U artwork only as the last fallback.
 
 ### Parsing and mapping
 
 The XML parser reads `<channel>` and `<programme>` elements, preserving title, description, category, optional icon, absolute start, and absolute end. It filters to programs overlapping the requested window. A program is accepted only when its `programme@channel` numeric ID appears in both the curated allowed station set and an XMLTV `<channel id>` element. Display names and call signs are never used for runtime matching.
 
-Browse cards use the matching current program. When upcoming data exists, the selected channel exposes a compact Up Next disclosure containing the next five programs. Schedule absence, stale cache, parse failure, pairing failure, and service unavailability do not change the channel playback identity or availability.
+Browse cards use the matching current program. When upcoming data exists, the selected channel exposes a compact Up Next disclosure containing the next five programs. Schedule absence, stale cache, parse failure, build-configuration failure, token rotation, and service unavailability do not change the channel playback identity or availability.
 
 ## 13. UI and tvOS decisions
 
@@ -466,10 +481,12 @@ Run it with a repository-local module cache:
 ```sh
 mkdir -p .build/ModuleCache
 swiftc \
+  -parse-as-library \
   -swift-version 5 \
   -module-cache-path .build/ModuleCache \
   SeasonsTV/Models/Models.swift \
   SeasonsTV/Models/ChannelDirectory.swift \
+  SeasonsTV/Networking/MediaAPIConfiguration.swift \
   SeasonsTV/Networking/HTMLCatalogParser.swift \
   SeasonsTV/Networking/SeasonsClient.swift \
   SeasonsTV/Networking/XMLTVGuideProvider.swift \
@@ -500,9 +517,9 @@ Recommended validation after every upstream parser or playback change:
 
 ### Highest priority
 
-1. **Physical Apple TV FPS validation:** this is the largest unknown. Test certificate, SPC, license, CKC, playback, error, and cancellation behavior on hardware.
+1. **Physical Apple TV FPS hardening:** initial playback works; complete long-duration, interruption, failure, and cancellation testing on hardware.
 2. **Upstream contract fragility:** the application relies on private HTML, Angular invocation, and player-script shapes. Add sanitized real-page fixtures and failure telemetry before broad distribution.
-3. **Production EPG validation:** pairing, signed-Simulator Keychain restoration, and a populated production guide are validated, but repeated 200/304 refresh cycles, stale-cache behavior, and the full published station set still require extended production observation.
+3. **Production schedule-token validation:** configuration parsing and build injection are covered locally, but the matching private `MEDIA_READ_TOKEN` still needs end-to-end verification against the deployed API on both Simulator and physical Apple TV. Repeated 200/304 cycles, stale-cache behavior, and the full published station set also require extended observation.
 
 ### Other limitations
 
@@ -510,7 +527,8 @@ Recommended validation after every upstream parser or playback change:
 - Catalog and channel refresh are coupled with `async let`; failure of either prevents both from updating.
 - `HTTPCookieStorage.shared` is convenient but not an explicitly isolated per-account session store.
 - Local sign-out does not revoke the server session.
-- The EPG device token uses Keychain, while Seasons4U still relies on shared cookie storage; there is no account-switching UI.
+- The app-scoped read token is extractable from a distributed private app artifact by design; its security depends on narrow server scope, controlled distribution, and coordinated revocation/rotation.
+- The API supports one active `MEDIA_READ_TOKEN`, so rotation has no overlap window and requires a coordinated app/API rollout.
 - No retry/backoff, reachability UI, request timeout policy, or cancellation from the loading overlay.
 - No automated UI tests or XCTest target.
 - No accessibility audit, localization, telemetry, crash reporting, or privacy manifest work has been completed.
@@ -522,13 +540,12 @@ Recommended validation after every upstream parser or playback change:
 
 ## 17. Recommended next steps
 
-### Milestone A: hardware playback proof
+### Milestone A: hardware playback hardening
 
-1. Configure signing and a unique bundle ID.
-2. Install on a physical Apple TV.
-3. Test a small matrix: domestic channel, international channel, ordinary HLS event, unauthorized channel, and expired session.
-4. Capture only sanitized error domains/codes and HTTP statuses.
-5. Correct any certificate/license response assumptions and add fixtures/tests for them.
+1. Retain the validated signing configuration and replace the example bundle ID before wider distribution.
+2. Test a small matrix: domestic channel, international channel, ordinary HLS event, unauthorized channel, and expired session.
+3. Capture only sanitized error domains/codes and HTTP statuses.
+4. Correct any certificate/license response assumptions and add fixtures/tests for them.
 
 ### Milestone B: harden the integration
 
@@ -539,13 +556,14 @@ Recommended validation after every upstream parser or playback change:
 5. Add explicit request timeouts, cancellation, and conservative retry behavior.
 6. Decide whether to isolate cookies in a dedicated persistent cookie store.
 
-### Milestone C: EPG validation and polish
+### Milestone C: schedule-token validation and polish
 
-1. Observe repeated production 200/304 cycles and token restoration after device restart.
-2. Validate every curated station against a published XMLTV document and flag unmapped/missing stations without matching by name.
-3. Exercise current-time positioning, now-playing state, day navigation, missing programs, malformed entries, and missing artwork against production payloads.
-4. Add explicit stale-data age presentation if the last-known-good cache is used for an extended outage.
-5. Preserve the invariant that guide outages never break live playback.
+1. Inject the same private read token into Simulator and hardware builds, then observe repeated production 200/304 cycles across restart and reinstall.
+2. Verify that missing/wrong client configuration and missing server configuration produce the intended inline errors while playback remains usable.
+3. Validate every curated station against a published XMLTV document and flag unmapped/missing stations without matching by name.
+4. Exercise current-time positioning, now-playing state, missing programs, malformed entries, and missing artwork against production payloads.
+5. Add explicit stale-data age presentation if the last-known-good cache is used for an extended outage.
+6. Preserve the invariant that guide outages never break live playback.
 
 ### Milestone D: release readiness
 
@@ -575,10 +593,11 @@ For an incoming engineer, read the code in this order:
 3. `SeasonsTV/Networking/HTMLCatalogParser.swift` — all upstream markup assumptions.
 4. `SeasonsTV/Models/ChannelDirectory.swift` — authoritative playback/XMLTV mapping.
 5. `SeasonsTV/Models/Models.swift` — domain and playback ownership.
-6. `SeasonsTV/Networking/XMLTVGuideProvider.swift` — device pairing, secure credential, ETag cache, and XMLTV parser.
-7. `SeasonsTV/Playback/FairPlayResourceLoader.swift` — FPS exchange.
-8. `SeasonsTV/Views/RootView.swift` — login, pairing, guide, and catalog UI.
-9. `SeasonsTV/Views/PlayerScreen.swift` — AVPlayer presentation.
-10. `Tests/ParserSmoke.swift` — executable examples of expected upstream shapes.
+6. `SeasonsTV/Networking/MediaAPIConfiguration.swift` — private build configuration validation and legacy schedule-token cleanup.
+7. `SeasonsTV/Networking/XMLTVGuideProvider.swift` — route-scoped read-token requests, ETag caches, and XMLTV parser.
+8. `SeasonsTV/Playback/FairPlayResourceLoader.swift` — FPS exchange.
+9. `SeasonsTV/Views/RootView.swift` — login, guide, catalog UI, and schedule failure presentation.
+10. `SeasonsTV/Views/PlayerScreen.swift` — AVPlayer presentation.
+11. `Tests/ParserSmoke.swift` — executable examples of expected upstream shapes.
 
 This order follows the actual data flow and makes implicit upstream assumptions visible before UI details.
