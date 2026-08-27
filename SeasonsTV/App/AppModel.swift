@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
     @Published var screen: Screen = .checkingSession
     @Published var categories: [CatalogCategory] = []
     @Published var liveChannels: [LiveChannel] = []
+    @Published private(set) var availableLiveChannels: [LiveChannel] = []
     @Published var selectedCategoryID = "football"
     @Published var destination: Destination = .liveTV
     @Published var liveSearchQuery = ""
@@ -24,11 +25,14 @@ final class AppModel: ObservableObject {
     @Published var lastFocusedLiveID: String?
     @Published var lastFocusedEventID: String?
     @Published var epgState: EPGLoadState = .unavailable
+    @Published private(set) var disabledChannelIDs: Set<String>
     @Published private(set) var enabledSportsCategoryIDs: Set<String>
     @Published private(set) var sportsSchedule: SportsScheduleSnapshot?
     @Published var sportsScheduleState: ContentLoadState = .idle
     @Published var channelStationMappings: [String: String] = [:]
     @Published var channelState: ContentLoadState = .idle
+    @Published private(set) var veryLocalState: ContentLoadState = .idle
+    @Published private(set) var isVeryLocalOnly = false
     @Published var eventState: ContentLoadState = .idle
     @Published var isRefreshing = false
     @Published var isWorking = false
@@ -37,6 +41,7 @@ final class AppModel: ObservableObject {
     @Published var playbackSession: PlaybackSession?
 
     let client: SeasonsClient
+    let veryLocalClient: VeryLocalClient
     private let epgProvider: EPGProviding?
     private let sportsScheduleProvider: SportsScheduleProviding?
     private let defaults: UserDefaults
@@ -45,20 +50,66 @@ final class AppModel: ObservableObject {
     private var sportsScheduleRequestID = UUID()
 
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
+    private static let disabledChannelsKey = "channels.disabledIDs"
+    private static let defaultDisabledChannelIDs: Set<String> = [
+        // Seasons4U
+        "6eb90a9b-2da1-4469-bd63-9801c8df705b", // UNIVERSO
+        "legacy:bkb:channel:604", // Fox Deportes
+
+        // Very Local: keep only WCVB Boston and WMUR Manchester enabled by default.
+        "verylocal:htv-national-desk",
+        "verylocal:koat",
+        "verylocal:wbal",
+        "verylocal:wvtm",
+        "verylocal:wptz",
+        "verylocal:wlwt",
+        "verylocal:kcci",
+        "verylocal:wbbh",
+        "verylocal:khbs",
+        "verylocal:wyff",
+        "verylocal:wapt",
+        "verylocal:kmbc",
+        "verylocal:wgal",
+        "verylocal:wlky",
+        "verylocal:wisn",
+        "verylocal:ksbw",
+        "verylocal:wdsu",
+        "verylocal:koco",
+        "verylocal:ketv",
+        "verylocal:wesh",
+        "verylocal:wtae",
+        "verylocal:wmtw",
+        "verylocal:wmor",
+        "verylocal:kcra",
+        "verylocal:wjcl",
+        "verylocal:wpbf",
+        "verylocal:wxii"
+    ]
     private static let defaultSportsCategoryIDs: Set<String> = [
         "football", "baseball", "hockey", "basketball"
     ]
 
     init(
         client: SeasonsClient = SeasonsClient(),
+        veryLocalClient: VeryLocalClient = VeryLocalClient(),
         epgProvider: EPGProviding? = XMLTVGuideProvider(),
         defaults: UserDefaults = .standard
     ) {
         self.client = client
+        self.veryLocalClient = veryLocalClient
         self.epgProvider = epgProvider
         self.sportsScheduleProvider = epgProvider as? SportsScheduleProviding
         self.defaults = defaults
         LegacyScheduleCredentialCleanup.run(defaults: defaults)
+        if let stored = defaults.array(forKey: Self.disabledChannelsKey) as? [String] {
+            self.disabledChannelIDs = Set(stored)
+        } else {
+            self.disabledChannelIDs = Self.defaultDisabledChannelIDs
+            defaults.set(
+                Array(Self.defaultDisabledChannelIDs).sorted(),
+                forKey: Self.disabledChannelsKey
+            )
+        }
         if let stored = defaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
             self.enabledSportsCategoryIDs = Set(stored)
         } else {
@@ -99,6 +150,35 @@ final class AppModel: ObservableObject {
         reconcileSelectedCategory()
     }
 
+    func isChannelEnabled(_ channelID: String) -> Bool {
+        !disabledChannelIDs.contains(channelID)
+    }
+
+    func setChannel(_ channelID: String, enabled: Bool) {
+        if enabled {
+            disabledChannelIDs.remove(channelID)
+        } else {
+            disabledChannelIDs.insert(channelID)
+        }
+        defaults.set(Array(disabledChannelIDs).sorted(), forKey: Self.disabledChannelsKey)
+        applyChannelPreferences()
+        Task { await refreshEPG(for: liveChannels, around: guideTimeAnchor) }
+    }
+
+    func enableAllChannels() {
+        disabledChannelIDs.removeAll()
+        defaults.set([], forKey: Self.disabledChannelsKey)
+        applyChannelPreferences()
+        Task { await refreshEPG(for: liveChannels, around: guideTimeAnchor) }
+    }
+
+    func restoreDefaultChannels() {
+        disabledChannelIDs = Self.defaultDisabledChannelIDs
+        defaults.set(Array(disabledChannelIDs).sorted(), forKey: Self.disabledChannelsKey)
+        applyChannelPreferences()
+        Task { await refreshEPG(for: liveChannels, around: guideTimeAnchor) }
+    }
+
     func restoreSession() async {
         do {
             try await loadContent(blocking: false)
@@ -107,7 +187,9 @@ final class AppModel: ObservableObject {
             screen = .signedOut
         } catch {
             screen = .signedOut
-            errorMessage = "We couldn’t restore your session because Seasons4U could not be reached. You can retry by signing in."
+            // A failed background restore should not block the public Very Local entry point.
+            // An explicit sign-in still reports its own actionable error.
+            errorMessage = nil
         }
     }
 
@@ -142,6 +224,7 @@ final class AppModel: ObservableObject {
             isRefreshing = true
         }
         channelState = .loading
+        veryLocalState = .loading
         eventState = .loading
         defer {
             isWorking = false
@@ -151,6 +234,8 @@ final class AppModel: ObservableObject {
         async let catalogResult = capture { try await self.client.loadCatalog() }
         async let channelResult = capture { try await self.client.loadLiveChannels() }
         let (events, channels) = await (catalogResult, channelResult)
+        let veryLocalChannels = veryLocalClient.loadChannels()
+        veryLocalState = veryLocalChannels.isEmpty ? .failed("Very Local did not publish any stations.") : .loaded
 
         if case .failure(let error) = events, isAuthenticationError(error) {
             throw SeasonsError.authenticationRequired
@@ -173,11 +258,17 @@ final class AppModel: ObservableObject {
 
         switch channels {
         case .success(let loadedChannels):
-            liveChannels = loadedChannels
+            replaceAvailableChannels(with: loadedChannels + veryLocalChannels)
             channelState = .loaded
-            Task { await refreshEPG(for: loadedChannels, around: Date()) }
+            Task { await refreshEPG(for: liveChannels, around: Date()) }
         case .failure(let error):
-            channelState = .failed(error.localizedDescription)
+            replaceAvailableChannels(with: veryLocalChannels)
+            if veryLocalChannels.isEmpty {
+                channelState = .failed(error.localizedDescription)
+            } else {
+                channelState = .loaded
+                Task { await refreshEPG(for: liveChannels, around: Date()) }
+            }
         }
 
         if case .failure(let eventError) = events,
@@ -226,7 +317,7 @@ final class AppModel: ObservableObject {
     private func refreshEPG(for channels: [LiveChannel], around date: Date) async {
         let requestID = UUID()
         epgRequestID = requestID
-        guard let epgProvider else {
+        guard !channels.isEmpty else {
             epgState = .unavailable
             channelStationMappings = [:]
             return
@@ -243,21 +334,83 @@ final class AppModel: ObservableObject {
 
         let start = Calendar.current.date(byAdding: .hour, value: -2, to: date) ?? date
         let end = Calendar.current.date(byAdding: .hour, value: 8, to: date) ?? date
-        do {
-            let result = try await epgProvider.loadGuide(for: channels, from: start, to: end)
-            guard epgRequestID == requestID else { return }
-            channelStationMappings = result.mappings.reduce(into: [:]) { mappings, mapping in
-                mappings[mapping.channelID] = mapping.stationID
+        let veryLocalChannels = channels.filter { $0.id.hasPrefix("verylocal:") }
+        let seasonsChannels = channels.filter { !$0.id.hasPrefix("verylocal:") }
+        var loadedResults: [(window: EPGGuideWindow, mappings: [ChannelStationMapping])] = []
+        var errors: [Error] = []
+
+        if !veryLocalChannels.isEmpty {
+            do {
+                loadedResults.append(
+                    try await veryLocalClient.loadGuide(
+                        for: veryLocalChannels,
+                        from: start,
+                        to: end
+                    )
+                )
+            } catch {
+                errors.append(error)
             }
-            epgState = .loaded(result.window)
-        } catch {
-            guard epgRequestID == requestID else { return }
-            epgState = .failed(message: error.localizedDescription, cached: cached)
+        }
+
+        if !seasonsChannels.isEmpty, let epgProvider {
+            do {
+                loadedResults.append(
+                    try await epgProvider.loadGuide(
+                        for: seasonsChannels,
+                        from: start,
+                        to: end
+                    )
+                )
+            } catch {
+                errors.append(error)
+            }
+        }
+
+        guard epgRequestID == requestID else { return }
+        guard !loadedResults.isEmpty else {
+            epgState = .failed(
+                message: errors.first?.localizedDescription ?? "Programming details are unavailable.",
+                cached: cached
+            )
+            return
+        }
+
+        var programsByStationID: [String: [EPGProgram]] = [:]
+        var mappings: [ChannelStationMapping] = []
+        for result in loadedResults {
+            programsByStationID.merge(result.window.programsByStationID) { existing, incoming in
+                (existing + incoming).sorted { $0.start < $1.start }
+            }
+            mappings.append(contentsOf: result.mappings)
+        }
+        channelStationMappings = mappings.reduce(into: [:]) { result, mapping in
+            result[mapping.channelID] = mapping.stationID
+        }
+        let mergedWindow = EPGGuideWindow(
+            start: start,
+            end: end,
+            programsByStationID: programsByStationID,
+            fetchedAt: Date()
+        )
+        if let error = errors.first {
+            epgState = .failed(message: error.localizedDescription, cached: mergedWindow)
+        } else {
+            epgState = .loaded(mergedWindow)
         }
     }
 
     func reload() async {
         errorMessage = nil
+        if isVeryLocalOnly {
+            replaceAvailableChannels(with: veryLocalClient.loadChannels())
+            channelState = availableLiveChannels.isEmpty
+                ? .failed("Very Local did not publish any stations.")
+                : .loaded
+            veryLocalState = channelState
+            await refreshEPG(for: liveChannels, around: Date())
+            return
+        }
         do {
             try await loadContent(blocking: false)
         } catch SeasonsError.authenticationRequired {
@@ -317,6 +470,9 @@ final class AppModel: ObservableObject {
             case .request(let request):
                 let url = try await client.resolveStream(request)
                 playbackSession = PlaybackSession(title: channel.name, url: url)
+            case .veryLocal(let reference):
+                let url = try await veryLocalClient.resolveStream(reference)
+                playbackSession = PlaybackSession(title: channel.name, url: url)
             }
         } catch SeasonsError.authenticationRequired {
             screen = .signedOut
@@ -342,6 +498,8 @@ final class AppModel: ObservableObject {
         categories = []
         playbackCategories = []
         liveChannels = []
+        availableLiveChannels = []
+        isVeryLocalOnly = false
         selectedCategoryID = "football"
         destination = .liveTV
         liveSearchQuery = ""
@@ -356,12 +514,49 @@ final class AppModel: ObservableObject {
         epgRequestID = UUID()
         sportsScheduleRequestID = UUID()
         channelState = .idle
+        veryLocalState = .idle
         eventState = .idle
         isRefreshing = false
         screen = .signedOut
     }
 
+    func openVeryLocal() {
+        playbackSession?.player.pause()
+        playbackSession = nil
+        errorMessage = nil
+        isVeryLocalOnly = true
+        destination = .liveTV
+        liveSearchQuery = ""
+        selectedChannelGenre = nil
+        lastFocusedLiveID = nil
+        guideTimeAnchor = Date()
+        epgState = .unavailable
+        channelStationMappings = [:]
+        replaceAvailableChannels(with: veryLocalClient.loadChannels())
+        channelState = availableLiveChannels.isEmpty
+            ? .failed("Very Local did not publish any stations.")
+            : .loaded
+        veryLocalState = channelState
+        screen = .catalog
+        Task { await refreshEPG(for: liveChannels, around: Date()) }
+    }
+
     func pausePlayback() {
         playbackSession?.player.pause()
+    }
+
+    private func replaceAvailableChannels(with channels: [LiveChannel]) {
+        availableLiveChannels = channels
+        applyChannelPreferences()
+    }
+
+    private func applyChannelPreferences() {
+        liveChannels = availableLiveChannels.filter { !disabledChannelIDs.contains($0.id) }
+        if let lastFocusedLiveID {
+            let channelID = lastFocusedLiveID.replacingOccurrences(of: "channel:", with: "")
+            if !liveChannels.contains(where: { $0.id == channelID }) {
+                self.lastFocusedLiveID = liveChannels.first.map { "channel:\($0.id)" }
+            }
+        }
     }
 }

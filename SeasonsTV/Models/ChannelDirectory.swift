@@ -86,6 +86,11 @@ enum ChannelDirectory {
     }
 
     static func brandAssetName(forPlaybackIdentity identity: String) -> String? {
+        switch identity {
+        case "verylocal:wmur": return "VeryLocalLogo_WMUR"
+        case "verylocal:wcvb": return "VeryLocalLogo_WCVB"
+        default: break
+        }
         guard let definition = byPlaybackIdentity[identity] else { return nil }
         return "ChannelLogo_\(definition.stationID)"
     }

@@ -232,6 +232,7 @@ struct LiveChannel: Identifiable {
     enum Playback {
         case drmPage(URL)
         case request(PlaybackRequest)
+        case veryLocal(VeryLocalPlaybackReference)
     }
 
     let id: String

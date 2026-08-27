@@ -35,7 +35,23 @@ enum PlaybackPayloadBuilder {
                 "isDVR": scalar(arguments, at: 4, default: false)
             ]
 
-        case "bsb", "ncf", "xfl":
+        case "bsb":
+            var payload: [String: Any] = [
+                "id": id,
+                "type": type,
+                "broadcast": string(arguments, at: 2, default: "home"),
+                "mediaId": scalar(arguments, at: 3, default: 0),
+                "isDVR": scalar(arguments, at: 4, default: false),
+                "gmd": dotNetTicks(for: now)
+            ]
+            let dateCode = string(arguments, at: 5, default: "")
+            if dateCode.range(of: #"^\d{8}$"#, options: .regularExpression) != nil {
+                payload["dateCode"] = scalar(dateCode)
+                payload["isG"] = true
+            }
+            return payload
+
+        case "ncf", "xfl":
             return [
                 "id": id,
                 "type": type,

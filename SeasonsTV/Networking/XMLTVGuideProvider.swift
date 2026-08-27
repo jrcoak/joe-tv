@@ -111,10 +111,10 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot {
         let configuration = try requireConfiguration()
         let data = try await currentSportsScheduleData(configuration: configuration)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
         do {
-            return try decoder.decode(SportsScheduleSnapshot.self, from: data)
+            let snapshot = try SportsScheduleDecoder.decode(data)
+            recordSportsRefresh()
+            return snapshot
         } catch {
             throw EPGServiceError.invalidSportsSchedule
         }
@@ -205,11 +205,9 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
                 if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
                     defaults.set(etag, forKey: Self.sportsETagKey)
                 }
-                recordSportsRefresh()
                 return data
             case 304:
                 guard let cachedData else { throw EPGServiceError.invalidSportsSchedule }
-                recordSportsRefresh()
                 return cachedData
             case 401:
                 throw EPGServiceError.authorizationInvalid
@@ -249,6 +247,30 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
         let now = Date()
         sportsLastAttempt = now
         defaults.set(now, forKey: Self.sportsLastAttemptKey)
+    }
+}
+
+enum SportsScheduleDecoder {
+    static func decode(_ data: Data) throws -> SportsScheduleSnapshot {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let standardFormatter = ISO8601DateFormatter()
+        standardFormatter.formatOptions = [.withInternetDateTime]
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = fractionalFormatter.date(from: value)
+                ?? standardFormatter.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Expected an ISO-8601 timestamp, with optional fractional seconds."
+            )
+        }
+        return try decoder.decode(SportsScheduleSnapshot.self, from: data)
     }
 }
 

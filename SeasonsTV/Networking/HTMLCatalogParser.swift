@@ -472,6 +472,41 @@ enum HTMLCatalogParser {
         return keys.lazy.compactMap { normalized[$0.lowercased()] }.first
     }
 
+    private static func dynamicArray(in dictionary: [String: Any], keys: [String]) -> [Any] {
+        guard let value = dynamicValue(in: dictionary, keys: keys) else { return [] }
+        if let array = value as? [Any] { return array }
+        if let wrapped = value as? [String: Any] {
+            if let array = dynamicValue(in: wrapped, keys: ["$values", "values", "items"]) as? [Any] {
+                return array
+            }
+            let indexed = wrapped.compactMap { key, value -> (index: Int, value: Any)? in
+                guard let index = Int(key) else { return nil }
+                return (index, value)
+            }
+            if !indexed.isEmpty {
+                return indexed.sorted { $0.index < $1.index }.map(\.value)
+            }
+        }
+        if let string = value as? String,
+           let data = string.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data),
+           let array = object as? [Any] {
+            return array
+        }
+        return []
+    }
+
+    private static func dynamicDictionary(_ value: Any) -> [String: Any] {
+        if let dictionary = value as? [String: Any] { return dictionary }
+        if let string = value as? String,
+           let data = string.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data),
+           let dictionary = object as? [String: Any] {
+            return dictionary
+        }
+        return [:]
+    }
+
     private static func dynamicPlaybackOptions(
         in game: [String: Any],
         fallbackController: String,
@@ -483,18 +518,19 @@ enum HTMLCatalogParser {
         }
 
         let rawGameID = dynamicString(in: game, keys: ["id", "gameid", "eventid", "code"])
+        let dateCode = dynamicString(in: game, keys: ["datecode"])
         var options: [MediaItem.PlaybackOption] = []
 
-        let media = dynamicValue(in: game, keys: ["media"]) as? [[String: Any]] ?? []
-        let playerOptions = dynamicValue(
+        let media = dynamicArray(in: game, keys: ["media"])
+        let playerOptions = dynamicArray(
             in: game,
             keys: ["mediaoptionsforplayer", "mediaoptions", "broadcasts"]
-        ) as? [[String: Any]] ?? []
+        )
         let optionCount = max(media.count, playerOptions.count)
         if optionCount > 0, let rawGameID, let endpoint = endpoint(for: fallbackController) {
             for index in 0..<optionCount {
-                let feedMetadata = index < media.count ? media[index] : [:]
-                let playerOption = index < playerOptions.count ? playerOptions[index] : [:]
+                let feedMetadata = index < media.count ? dynamicDictionary(media[index]) : [:]
+                let playerOption = index < playerOptions.count ? dynamicDictionary(playerOptions[index]) : [:]
                 guard let feed = dynamicString(
                     in: playerOption,
                     keys: ["feed", "broadcast", "name"]
@@ -524,10 +560,16 @@ enum HTMLCatalogParser {
                 ).flatMap(directHLSURL) {
                     playback = .hls(direct)
                 } else {
+                    var arguments = [rawGameID, "live", feed.lowercased(), mediaID, String(isDVR)]
+                    if fallbackController == "bsb", let dateCode {
+                        arguments.append(dateCode)
+                    } else {
+                        arguments.append("{}")
+                    }
                     playback = .request(PlaybackRequest(
                         endpoint: endpoint,
                         controller: fallbackController,
-                        arguments: [rawGameID, "live", feed.lowercased(), mediaID, String(isDVR), "{}"]
+                        arguments: arguments
                     ))
                 }
                 options.append(.init(id: "media-\(index)-\(feed)-\(mediaID)", title: title, playback: playback))

@@ -36,6 +36,21 @@ enum ParserSmoke {
             fatalError("Default Sports category order changed")
         }
 
+        let veryLocalChannels = VeryLocalClient(session: .shared).loadChannels()
+        guard veryLocalChannels.count == 29,
+              veryLocalChannels.first?.id == "verylocal:htv-national-desk",
+              veryLocalChannels.allSatisfy({ $0.genre == .news }),
+              veryLocalChannels.allSatisfy({ channel in
+                  if case .veryLocal = channel.playback { return true }
+                  return false
+              }) else {
+            fatalError("Very Local public station directory is incomplete or has unstable identities")
+        }
+        guard ChannelDirectory.brandAssetName(forPlaybackIdentity: "verylocal:wmur") == "VeryLocalLogo_WMUR",
+              ChannelDirectory.brandAssetName(forPlaybackIdentity: "verylocal:wcvb") == "VeryLocalLogo_WCVB" else {
+            fatalError("The priority Very Local stations are not using bundled high-resolution logos")
+        }
+
         let mediaReadToken = String(repeating: "a", count: 32)
         guard let mediaConfiguration = try? MediaAPIConfiguration.values(
             baseURLValue: "https://personal-media-api.example",
@@ -76,7 +91,7 @@ enum ParserSmoke {
         let sportsScheduleJSON = Data(#"""
         {
           "provider": "ESPN",
-          "generatedAt": "2026-08-14T12:00:00Z",
+          "generatedAt": "2026-08-14T12:00:00.123+00:00",
           "windowStart": "2026-08-13",
           "windowEnd": "2026-08-22",
           "events": [
@@ -110,9 +125,7 @@ enum ParserSmoke {
           ]
         }
         """#.utf8)
-        let sportsDecoder = JSONDecoder()
-        sportsDecoder.dateDecodingStrategy = .iso8601
-        guard let sportsSchedule = try? sportsDecoder.decode(SportsScheduleSnapshot.self, from: sportsScheduleJSON),
+        guard let sportsSchedule = try? SportsScheduleDecoder.decode(sportsScheduleJSON),
               sportsSchedule.events.first?.homeTeamLogoURL?.host == "media.example",
               sportsSchedule.events.first?.broadcastChannels == ["ESPN", "NFL Network"] else {
             fatalError("Sports schedule JSON or artwork metadata was not decoded")
@@ -214,7 +227,9 @@ enum ParserSmoke {
         )
         let epoch = Date(timeIntervalSince1970: 0)
         guard let baseballPayload = try? PlaybackPayloadBuilder.makePayload(for: baseballRequest, now: epoch),
-              baseballPayload["gmd"] as? Int64 == 621_355_968_000_000_000 else {
+              baseballPayload["gmd"] as? Int64 == 621_355_968_000_000_000,
+              baseballPayload["dateCode"] == nil,
+              baseballPayload["isG"] == nil else {
             fatalError("Timestamped playback payload does not match the site controller")
         }
 
@@ -318,6 +333,7 @@ enum ParserSmoke {
               "Id": 901,
               "Away_Name": "Yankees",
               "Home_Name": "Red Sox",
+              "DateCode": 20260826,
               "IsLive": true,
               "MediaOptionsForPlayer": [
                 {"feed": "AWAY", "mediaPlaybackId": 40, "isDVR": false},
@@ -337,10 +353,85 @@ enum ParserSmoke {
               officialBaseball[0].title == "Yankees @ Red Sox",
               officialBaseball[0].playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
               case .request(let homeBaseball) = officialBaseball[0].playback,
-              homeBaseball.arguments == ["901", "live", "home", "41", "false", "{}"],
+              homeBaseball.arguments == ["901", "live", "home", "41", "false", "20260826"],
               case .request(let awayBaseball) = officialBaseball[0].playbackOptions[1].playback,
               awayBaseball.arguments[2] == "away" else {
             fatalError("Baseball Home/Away broadcast choices were not parsed")
+        }
+        guard let googleBaseballPayload = try? PlaybackPayloadBuilder.makePayload(for: homeBaseball, now: epoch),
+              googleBaseballPayload["id"] as? Int64 == 901,
+              googleBaseballPayload["mediaId"] as? Int64 == 41,
+              googleBaseballPayload["dateCode"] as? Int64 == 20_260_826,
+              googleBaseballPayload["isG"] as? Bool == true,
+              googleBaseballPayload["gmd"] as? Int64 == 621_355_968_000_000_000 else {
+            fatalError("Baseball WatchG payload does not match the site controller")
+        }
+
+        let liveShapedBaseballPayload = Data(#"""
+        {
+          "games": [
+            {
+              "Id": 903,
+              "Away_Name": "Cubs",
+              "Home_Name": "Cardinals",
+              "DateCode": 20260826,
+              "IsLive": true,
+              "Media": [
+                null,
+                {"feed": "AWAY", "mediaPlaybackId": 52},
+                {"feed": "HOME", "mediaPlaybackId": 53}
+              ],
+              "MediaOptionsForPlayer": [null, "CHC", "STL"]
+            }
+          ]
+        }
+        """#.utf8)
+        let liveShapedBaseball = HTMLCatalogParser.parseDynamicGames(
+            liveShapedBaseballPayload,
+            categoryID: "baseball",
+            controller: "bsb",
+            baseURL: baseURL
+        )
+        guard liveShapedBaseball.count == 1,
+              liveShapedBaseball[0].playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
+              case .request(let liveHomeBaseball) = liveShapedBaseball[0].playback,
+              liveHomeBaseball.arguments == ["903", "live", "home", "53", "false", "20260826"] else {
+            fatalError("Baseball media arrays with scalar labels and null placeholders were not parsed")
+        }
+
+        let twinsAthleticsPayload = Data(#"""
+        {
+          "games": [
+            {
+              "Id": 823988,
+              "Away_Name": "Twins",
+              "Home_Name": "Athletics",
+              "DateCode": 20260826,
+              "IsLive": true,
+              "Media": {
+                "0": {"feed": "HOME", "mediaPlaybackId": 61},
+                "1": {"feed": "AWAY", "mediaPlaybackId": 62}
+              },
+              "MediaOptionsForPlayer": {"0": "ATH", "1": "MIN"}
+            }
+          ]
+        }
+        """#.utf8)
+        let twinsAthletics = HTMLCatalogParser.parseDynamicGames(
+            twinsAthleticsPayload,
+            categoryID: "baseball",
+            controller: "bsb",
+            baseURL: baseURL
+        )
+        guard twinsAthletics.count == 1,
+              twinsAthletics[0].title == "Twins @ Athletics",
+              twinsAthletics[0].playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
+              case .request(let athleticsHome) = twinsAthletics[0].playback,
+              athleticsHome.arguments == ["823988", "live", "home", "61", "false", "20260826"],
+              let athleticsPayload = try? PlaybackPayloadBuilder.makePayload(for: athleticsHome, now: epoch),
+              athleticsPayload["dateCode"] as? Int64 == 20_260_826,
+              athleticsPayload["isG"] as? Bool == true else {
+            fatalError("Twins @ Athletics numeric-keyed Home/Away feeds were not parsed")
         }
 
         let splitBaseballPayload = Data(#"""

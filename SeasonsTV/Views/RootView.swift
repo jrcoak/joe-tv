@@ -101,9 +101,28 @@ private struct LoginView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .frame(minHeight: 66)
                 .disabled(model.isWorking)
                 .accessibilityIdentifier("login.submit")
+
+                HStack(spacing: 12) {
+                    Rectangle().fill(SeasonTheme.keyline).frame(height: 1)
+                    Text("OR")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Rectangle().fill(SeasonTheme.keyline).frame(height: 1)
+                }
+
+                Button {
+                    model.openVeryLocal()
+                } label: {
+                    Label("Watch Very Local free", systemImage: "location.fill.viewfinder")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .frame(minHeight: 60)
+                .accessibilityIdentifier("login.veryLocal")
             }
             .padding(44)
             .frame(width: 640)
@@ -129,6 +148,7 @@ private struct CatalogView: View {
     @EnvironmentObject private var model: AppModel
     @State private var confirmsSignOut = false
     @State private var showsSportsCategorySettings = false
+    @State private var showsChannelSettings = false
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
     @FocusState private var focusedDestination: AppModel.Destination?
@@ -174,6 +194,9 @@ private struct CatalogView: View {
         .sheet(isPresented: $showsSportsCategorySettings) {
             SportsCategorySettingsView()
         }
+        .sheet(isPresented: $showsChannelSettings) {
+            ChannelSettingsView()
+        }
     }
 
     private var destinationBar: some View {
@@ -186,14 +209,16 @@ private struct CatalogView: View {
 
             HStack(spacing: 8) {
                 destinationButton("Live TV", symbol: "rectangle.grid.1x2.fill", destination: .liveTV)
-                destinationButton("Sports & Events", symbol: "sportscourt.fill", destination: .sports)
+                if !model.isVeryLocalOnly {
+                    destinationButton("Sports & Events", symbol: "sportscourt.fill", destination: .sports)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .focusSection()
 
             if model.isRefreshing {
                 ProgressView()
-                    .controlSize(.small)
+                    .scaleEffect(0.8)
                     .accessibilityLabel("Refreshing content")
             }
 
@@ -203,19 +228,33 @@ private struct CatalogView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                Button {
-                    Task {
-                        await model.loadEPG(around: Date())
-                        await model.loadSportsSchedule()
+                if !model.isVeryLocalOnly {
+                    Button {
+                        Task {
+                            await model.loadEPG(around: Date())
+                            await model.loadSportsSchedule()
+                        }
+                    } label: {
+                        Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
+                    }
+                    Button { showsSportsCategorySettings = true } label: {
+                        Label("Sports Categories", systemImage: "slider.horizontal.3")
+                    }
+                }
+                Button { showsChannelSettings = true } label: {
+                    Label("Channels", systemImage: "tv.and.mediabox")
+                }
+                Button(role: model.isVeryLocalOnly ? nil : .destructive) {
+                    if model.isVeryLocalOnly {
+                        model.signOut()
+                    } else {
+                        confirmsSignOut = true
                     }
                 } label: {
-                    Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
-                }
-                Button { showsSportsCategorySettings = true } label: {
-                    Label("Sports Categories", systemImage: "slider.horizontal.3")
-                }
-                Button(role: .destructive) { confirmsSignOut = true } label: {
-                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label(
+                        model.isVeryLocalOnly ? "Back to sign in" : "Sign out",
+                        systemImage: "rectangle.portrait.and.arrow.right"
+                    )
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -259,6 +298,106 @@ private struct CatalogView: View {
 
     private func focusCurrentDestination() {
         focusedDestination = model.destination
+    }
+}
+
+private struct ChannelSettingsView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    private struct ProviderSection: Identifiable {
+        let id: String
+        let title: String
+        let channels: [LiveChannel]
+    }
+
+    private var sections: [ProviderSection] {
+        let seasons = model.availableLiveChannels.filter { !$0.id.hasPrefix("verylocal:") }
+        let veryLocal = model.availableLiveChannels.filter { $0.id.hasPrefix("verylocal:") }
+        return [
+            ProviderSection(id: "seasons4u", title: "Seasons4U", channels: seasons),
+            ProviderSection(id: "verylocal", title: "Very Local", channels: veryLocal)
+        ].filter { !$0.channels.isEmpty }
+    }
+
+    private var enabledCount: Int {
+        model.availableLiveChannels.reduce(into: 0) { count, channel in
+            if model.isChannelEnabled(channel.id) { count += 1 }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Channels")
+                        .font(.system(size: 42, weight: .semibold))
+                    Text("Choose which channels appear in Live TV.")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(sections) { section in
+                        Text(section.title.uppercased())
+                            .font(.caption.weight(.semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+
+                        ForEach(section.channels) { channel in
+                            let isEnabled = model.isChannelEnabled(channel.id)
+                            Button {
+                                model.setChannel(channel.id, enabled: !isEnabled)
+                            } label: {
+                                HStack(spacing: 18) {
+                                    ArtworkView(
+                                        url: channel.logoURL,
+                                        symbol: "tv",
+                                        localAssetName: ChannelDirectory.brandAssetName(
+                                            forPlaybackIdentity: channel.id
+                                        ),
+                                        outerPadding: 3,
+                                        artworkPadding: 5
+                                    )
+                                    .frame(width: 96, height: 56)
+
+                                    Text(channel.name)
+                                        .font(.title3.weight(.medium))
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(isEnabled ? SeasonTheme.accent : .secondary)
+                                }
+                            }
+                            .buttonStyle(SportsSettingsRowButtonStyle())
+                            .accessibilityValue(isEnabled ? "Enabled" : "Disabled")
+                            .accessibilityIdentifier("settings.channel.\(channel.id)")
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Text("\(enabledCount) of \(model.availableLiveChannels.count) channels enabled")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Restore Defaults") { model.restoreDefaultChannels() }
+                    .buttonStyle(.bordered)
+                Button("Enable All") { model.enableAllChannels() }
+                    .buttonStyle(.bordered)
+                    .disabled(enabledCount == model.availableLiveChannels.count)
+            }
+        }
+        .padding(50)
+        .frame(width: 920, height: 820)
+        .background(SeasonTheme.background)
     }
 }
 
@@ -399,7 +538,7 @@ private struct LiveTVBrowseView: View {
                     }
 
                     if let guideErrorMessage {
-                        InlineStatusBanner(message: "Programming details are unavailable. \(guideErrorMessage)") {
+                        InlineStatusBanner(message: "Some programming details are unavailable. \(guideErrorMessage)") {
                             Task { await model.loadEPG(around: Date()) }
                         }
                     }
@@ -451,7 +590,15 @@ private struct LiveTVBrowseView: View {
                 }
                 .accessibilityIdentifier("browse.search")
 
-            if filteredChannels.isEmpty {
+            if model.liveChannels.isEmpty {
+                StatePanel(
+                    title: "No channels enabled",
+                    message: "Enable channels from More, then Channels.",
+                    symbol: "tv.slash",
+                    actionTitle: nil,
+                    action: {}
+                )
+            } else if filteredChannels.isEmpty {
                 StatePanel(
                     title: "No channels found",
                     message: "Try a different channel name.",
@@ -1519,7 +1666,7 @@ private struct SportsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 3) {
                         ForEach(category.items) { item in
-                            Button { playBest(item) } label: {
+                            Button { activateEvent(item) } label: {
                                 SportsEventRow(item: item)
                             }
                             .buttonStyle(LiveChannelRowButtonStyle())
@@ -1536,7 +1683,7 @@ private struct SportsView: View {
                                 }
                             }
                             .accessibilityLabel(
-                                "\(item.title), \(item.subtitle ?? "Live"), \(item.isPlayable ? "press to play best feed" : "stream not available yet")"
+                                "\(item.title), \(item.subtitle ?? "Live"), \(eventActionDescription(for: item))"
                             )
                             .accessibilityIdentifier("sports.item.\(item.id)")
                         }
@@ -1558,7 +1705,10 @@ private struct SportsView: View {
 
     private func eventStage(_ item: MediaItem?) -> some View {
         let best = item.flatMap(bestOption)
-        let alternates = item.map(otherOptions) ?? []
+        let baseballFeeds = item.map(baseballPrimaryOptions) ?? []
+        let alternates = item.map {
+            baseballFeeds.isEmpty ? otherOptions(for: $0) : otherBaseballOptions(for: $0, primary: baseballFeeds)
+        } ?? []
 
         return ZStack(alignment: .bottomLeading) {
             SportsEventBackdrop(item: item)
@@ -1598,7 +1748,28 @@ private struct SportsView: View {
                     .lineLimit(1)
                 }
 
-                if let item, let best {
+                if let item, !baseballFeeds.isEmpty {
+                    HStack(spacing: 12) {
+                        ForEach(baseballFeeds) { option in
+                            Button { play(item, option: option) } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: "play.fill")
+                                        .font(.title3.weight(.bold))
+                                    Text(option.title)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(BroadcastPrimaryButtonStyle())
+                            .focused($focusedActionID, equals: option.id)
+                            .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
+                        }
+                    }
+
+                    alternateFeedPicker(item, options: alternates)
+                } else if let item, let best {
                     Button { play(item, option: best) } label: {
                         HStack(spacing: 16) {
                             Image(systemName: "play.fill")
@@ -1617,49 +1788,7 @@ private struct SportsView: View {
                     .focused($focusedActionID, equals: "best")
                     .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
 
-                    if !alternates.isEmpty {
-                        Button {
-                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-                                showsOtherFeeds.toggle()
-                            }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Other Feeds")
-                                        .font(.headline)
-                                    Text("\(alternates.count) alternate broadcasts")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: showsOtherFeeds ? "chevron.up" : "chevron.down")
-                            }
-                        }
-                        .buttonStyle(BroadcastDisclosureButtonStyle(isExpanded: showsOtherFeeds))
-                        .focused($focusedActionID, equals: "other-feeds")
-                        .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
-
-                        if showsOtherFeeds {
-                            ScrollView(.vertical, showsIndicators: false) {
-                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                                    ForEach(alternates) { option in
-                                        Button { play(item, option: option) } label: {
-                                            HStack {
-                                                Image(systemName: "play.fill")
-                                                Text(option.title).lineLimit(1)
-                                                Spacer()
-                                            }
-                                        }
-                                        .buttonStyle(BroadcastFeedButtonStyle())
-                                        .focused($focusedActionID, equals: option.id)
-                                        .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
-                                    }
-                                }
-                            }
-                            .frame(maxHeight: 205)
-                            .transition(.opacity)
-                        }
-                    }
+                    alternateFeedPicker(item, options: alternates)
                 } else if item != nil {
                     Label("Stream not published yet", systemImage: "calendar")
                         .font(.headline)
@@ -1671,6 +1800,53 @@ private struct SportsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay { RoundedRectangle(cornerRadius: 8).stroke(LiveTVPalette.divider) }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: item?.id)
+    }
+
+    @ViewBuilder
+    private func alternateFeedPicker(_ item: MediaItem, options: [MediaItem.PlaybackOption]) -> some View {
+        if !options.isEmpty {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    showsOtherFeeds.toggle()
+                }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("More Feeds")
+                            .font(.headline)
+                        Text("\(options.count) additional broadcasts")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: showsOtherFeeds ? "chevron.up" : "chevron.down")
+                }
+            }
+            .buttonStyle(BroadcastDisclosureButtonStyle(isExpanded: showsOtherFeeds))
+            .focused($focusedActionID, equals: "other-feeds")
+            .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
+
+            if showsOtherFeeds {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(options) { option in
+                            Button { play(item, option: option) } label: {
+                                HStack {
+                                    Image(systemName: "play.fill")
+                                    Text(option.title).lineLimit(1)
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(BroadcastFeedButtonStyle())
+                            .focused($focusedActionID, equals: option.id)
+                            .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
+                        }
+                    }
+                }
+                .frame(maxHeight: 205)
+                .transition(.opacity)
+            }
+        }
     }
 
     private func bestOption(for item: MediaItem) -> MediaItem.PlaybackOption? {
@@ -1704,6 +1880,50 @@ private struct SportsView: View {
         }
     }
 
+    private func baseballPrimaryOptions(for item: MediaItem) -> [MediaItem.PlaybackOption] {
+        guard item.categoryID == "baseball" else { return [] }
+        let playable = item.playbackOptions.filter(isPlayableOption)
+        return playable.filter { option in
+            let title = option.title.lowercased()
+            guard !title.contains("dvr") else { return false }
+            return title.hasPrefix("home feed")
+                || title.hasPrefix("away feed")
+                || title.hasPrefix("national feed")
+        }
+    }
+
+    private func otherBaseballOptions(
+        for item: MediaItem,
+        primary: [MediaItem.PlaybackOption]
+    ) -> [MediaItem.PlaybackOption] {
+        let primaryIDs = Set(primary.map(\.id))
+        return item.playbackOptions.filter { option in
+            !primaryIDs.contains(option.id) && isPlayableOption(option)
+        }
+    }
+
+    private func isPlayableOption(_ option: MediaItem.PlaybackOption) -> Bool {
+        if case .unavailable = option.playback { return false }
+        return true
+    }
+
+    private func eventActionDescription(for item: MediaItem) -> String {
+        guard item.isPlayable else { return "stream not available yet" }
+        return baseballPrimaryOptions(for: item).count > 1
+            ? "press to choose home or away feed"
+            : "press to play"
+    }
+
+    private func activateEvent(_ item: MediaItem) {
+        let baseballFeeds = baseballPrimaryOptions(for: item)
+        guard baseballFeeds.count > 1, let firstFeed = baseballFeeds.first else {
+            playBest(item)
+            return
+        }
+        focusedItemID = item.id
+        DispatchQueue.main.async { focusedActionID = firstFeed.id }
+    }
+
     private func playBest(_ item: MediaItem) {
         guard let best = bestOption(for: item) else {
             Task { await model.play(item) }
@@ -1717,7 +1937,8 @@ private struct SportsView: View {
     }
 
     private func focusBestAction() {
-        DispatchQueue.main.async { focusedActionID = "best" }
+        let actionID = focusedItem.flatMap { baseballPrimaryOptions(for: $0).first?.id } ?? "best"
+        DispatchQueue.main.async { focusedActionID = actionID }
     }
 
     private func focusSelectedCategory() {

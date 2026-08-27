@@ -63,6 +63,7 @@ SeasonsTV/
     HTMLCatalogParser.swift       Server-rendered HTML/JavaScript contract parsing
     MediaAPIConfiguration.swift   Private build configuration and legacy credential cleanup
     XMLTVGuideProvider.swift      MEDIA_READ_TOKEN requests, ETag caches, XMLTV parsing
+    VeryLocalClient.swift         Public Hearst station catalog, EPG, and fresh HLS resolution
   Playback/
     FairPlayResourceLoader.swift  FPS certificate/SPC/CKC exchange
   Views/
@@ -82,7 +83,7 @@ docs/
   TECHNICAL_HANDOFF.md            This document
 ```
 
-There are no third-party dependencies, package managers, analytics SDKs, or persistence frameworks. The app consumes Seasons4U plus the separately deployed Personal Media API.
+There are no third-party dependencies, package managers, analytics SDKs, or persistence frameworks. The app consumes Seasons4U, the separately deployed Personal Media API, and Very Local's public Hearst configuration and guide endpoints.
 
 ## 4. Build configuration
 
@@ -473,6 +474,8 @@ AVPlayer failures are separate because they occur after the network orchestratio
 - normalized sports JSON decoding, network/logo preservation, and schedule-to-playback enrichment without playback-identity changes;
 - escaped HLS URL parsing;
 - FPS HLS/certificate/header/international-proxy parsing.
+- the fixed 29-channel Very Local station directory, namespaced playback identities, and public-playback model cases.
+- priority WMUR/WCVB local-brand routing, independent of Very Local's lower-resolution remote artwork.
 
 It does not make live network requests and does not test form login, cookie persistence, session expiry, or real media playback.
 
@@ -490,6 +493,7 @@ swiftc \
   SeasonsTV/Networking/HTMLCatalogParser.swift \
   SeasonsTV/Networking/SeasonsClient.swift \
   SeasonsTV/Networking/XMLTVGuideProvider.swift \
+  SeasonsTV/Networking/VeryLocalClient.swift \
   SeasonsTV/Playback/FairPlayResourceLoader.swift \
   Tests/ParserSmoke.swift \
   -o .build/parser-smoke
