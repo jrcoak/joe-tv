@@ -247,6 +247,13 @@ enum HTMLCatalogParser {
                 seen.insert(playbackSignature($0.playback)).inserted
             }
             guard !merged.isEmpty else { return primary }
+            var seenIDs = Set<String>()
+            let uniquelyIdentified = merged.enumerated().map { index, option in
+                let id = seenIDs.insert(option.id).inserted
+                    ? option.id
+                    : "merged-\(index)-\(option.id)"
+                return MediaItem.PlaybackOption(id: id, title: option.title, playback: option.playback)
+            }
 
             return MediaItem(
                 id: primary.id,
@@ -254,7 +261,7 @@ enum HTMLCatalogParser {
                 subtitle: primary.subtitle,
                 imageURL: primary.imageURL ?? supplemental.imageURL,
                 categoryID: primary.categoryID,
-                playbackOptions: merged
+                playbackOptions: uniquelyIdentified
             )
         }
     }
@@ -351,45 +358,103 @@ enum HTMLCatalogParser {
                 )
             }
 
-            guard let invocation = firstCapture(
-                in: row,
-                pattern: #"(?is)ng-click\s*=\s*(?:"([^"]+\.Watch\([^"]+\))"|'([^']+\.Watch\([^']+\))')"#
-            ).map(decodeEntities) else { return nil }
-
-            guard let controllerName = firstCapture(in: invocation, pattern: #"([A-Za-z][A-Za-z0-9_]*)\.Watch\("#),
-                  let arguments = firstCapture(in: invocation, pattern: #"\.Watch\((.*)\)"#) else { return nil }
-            let values = splitArguments(arguments)
-            guard let rawID = values.first?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  isLiteralPlaybackID(rawID),
-                  let controller = canonicalController(for: controllerName),
-                  let endpoint = endpoint(for: controller) else { return nil }
-
-            let decodedValues = values.map(unquote)
-            if let directURL = decodedValues.lazy.compactMap(directHLSURL).first {
-                return MediaItem(
-                    id: "hls|\(categoryID)|\(directURL.absoluteString)",
-                    title: title,
-                    subtitle: subtitle(from: rawTitle, drm: false),
-                    imageURL: imageURL,
-                    categoryID: categoryID,
-                    playback: .hls(directURL)
-                )
+            let actionPattern = #"(?is)<(?:a|button)\b[^>]*ng-click\s*=\s*(?:"([^"]+\.Watch\([^"]+\))"|'([^']+\.Watch\([^']+\))')[^>]*>(.*?)</(?:a|button)>"#
+            var actions: [(invocation: String, label: String)] = allCaptures(in: row, pattern: actionPattern)
+                .compactMap { action in
+                    guard let invocation = action.first else { return nil }
+                    return (decodeEntities(invocation), action.count > 1 ? plainText(action.last ?? "") : "")
+                }
+            if actions.isEmpty {
+                actions = allCaptures(
+                    in: row,
+                    pattern: #"(?is)ng-click\s*=\s*(?:"([^"]+\.Watch\([^"]+\))"|'([^']+\.Watch\([^']+\))')"#
+                ).compactMap { action in
+                    action.first.map { (decodeEntities($0), "") }
+                }
             }
 
-            let request = PlaybackRequest(
-                endpoint: endpoint,
-                controller: controller,
-                arguments: decodedValues
-            )
+            let parsedActions: [(playback: MediaItem.Playback, controller: String, values: [String], label: String)] = actions.compactMap { action in
+                guard let controllerName = firstCapture(
+                    in: action.invocation,
+                    pattern: #"([A-Za-z][A-Za-z0-9_]*)\.Watch\("#
+                ), let arguments = firstCapture(in: action.invocation, pattern: #"\.Watch\((.*)\)"#) else { return nil }
+                let values = splitArguments(arguments)
+                guard let rawID = values.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      isLiteralPlaybackID(rawID),
+                      let controller = canonicalController(for: controllerName),
+                      let endpoint = endpoint(for: controller) else { return nil }
+                let decodedValues = values.map(unquote)
+                let playback: MediaItem.Playback
+                if let directURL = decodedValues.lazy.compactMap(directHLSURL).first {
+                    playback = .hls(directURL)
+                } else {
+                    playback = .request(PlaybackRequest(
+                        endpoint: endpoint,
+                        controller: controller,
+                        arguments: decodedValues
+                    ))
+                }
+                return (playback, controller, decodedValues, action.label)
+            }
+            guard !parsedActions.isEmpty else { return nil }
+
+            let feedLabels = parsedActions.map { action -> String in
+                if action.values.indices.contains(2), !action.values[2].isEmpty { return action.values[2] }
+                return cleanTitle(action.label)
+            }
+            let normalizedFeeds = feedLabels.map { $0.lowercased() }
+            let canInferBaseballSides = categoryID == "baseball" &&
+                parsedActions.count == 2 &&
+                Set(normalizedFeeds.filter { !$0.isEmpty }).count == 2 &&
+                normalizedFeeds.allSatisfy { !isNamedBroadcastRole($0) }
+
+            var seenPlayback = Set<String>()
+            let playbackOptions = parsedActions.enumerated().compactMap { index, action -> MediaItem.PlaybackOption? in
+                guard seenPlayback.insert(playbackSignature(action.playback)).inserted else { return nil }
+                let isDVR = (
+                    action.values.indices.contains(4) &&
+                        action.values[4].caseInsensitiveCompare("true") == .orderedSame
+                ) || action.label.localizedCaseInsensitiveContains("DVR")
+                let feed = feedLabels[index]
+                let optionTitle: String
+                if isNamedBroadcastRole(feed) {
+                    optionTitle = broadcastTitle(feed, isDVR: isDVR)
+                } else if canInferBaseballSides {
+                    optionTitle = broadcastTitle(index == 0 ? "away" : "home", isDVR: isDVR)
+                } else {
+                    let label = cleanTitle(action.label)
+                    if !label.isEmpty, label.caseInsensitiveCompare("Backup") != .orderedSame {
+                        optionTitle = isDVR ? "\(label) · DVR" : label
+                    } else if !feed.isEmpty {
+                        optionTitle = broadcastTitle(feed, isDVR: isDVR)
+                    } else {
+                        optionTitle = isDVR ? "Watch · DVR" : "Watch"
+                    }
+                }
+                return MediaItem.PlaybackOption(
+                    id: "row-\(index)-\(action.controller)-\(playbackSignature(action.playback))",
+                    title: optionTitle,
+                    playback: action.playback
+                )
+            }
+            guard !playbackOptions.isEmpty else { return nil }
+
             return MediaItem(
-                id: "request|\(categoryID)|\(controller)|\(decodedValues.joined(separator: "|"))|\(title)",
+                id: "row|\(categoryID)|\(title)|\(playbackOptions[0].id)",
                 title: title,
                 subtitle: subtitle(from: rawTitle, drm: false),
                 imageURL: imageURL,
                 categoryID: categoryID,
-                playback: .request(request)
+                playbackOptions: playbackOptions.sorted {
+                    broadcastPriority($0.title) < broadcastPriority($1.title)
+                }
             )
         }
+    }
+
+    private static func isNamedBroadcastRole(_ value: String) -> Bool {
+        let normalized = value.lowercased()
+        return normalized.contains("home") || normalized.contains("away") || normalized.contains("national")
     }
 
     private static func canonicalController(for controller: String) -> String? {
@@ -513,12 +578,11 @@ enum HTMLCatalogParser {
         baseURL: URL,
         directStreamTemplate: String?
     ) -> [MediaItem.PlaybackOption] {
-        guard dynamicBool(in: game, keys: ["islive", "live"]) == true else {
-            return [.init(id: "unavailable", title: "Unavailable", playback: .unavailable)]
-        }
-
+        let isProviderLive = dynamicBool(in: game, keys: ["islive", "live"]) == true
         let rawGameID = dynamicString(in: game, keys: ["id", "gameid", "eventid", "code"])
         let dateCode = dynamicString(in: game, keys: ["datecode"])
+        let awayCode = dynamicString(in: game, keys: ["away", "awaycode", "awayabbr", "awayabbreviation"])
+        let homeCode = dynamicString(in: game, keys: ["home", "homecode", "homeabbr", "homeabbreviation"])
         var options: [MediaItem.PlaybackOption] = []
 
         let media = dynamicArray(in: game, keys: ["media"])
@@ -526,6 +590,14 @@ enum HTMLCatalogParser {
             in: game,
             keys: ["mediaoptionsforplayer", "mediaoptions", "broadcasts"]
         )
+        let liveContent = dynamicArray(in: game, keys: ["livecontent", "streams"])
+        guard isProviderLive || !media.isEmpty || !playerOptions.isEmpty || !liveContent.isEmpty else {
+            return [.init(id: "unavailable", title: "Unavailable", playback: .unavailable)]
+        }
+        let playbackType = dynamicString(
+            in: game,
+            keys: ["playbacktype", "streamtype"]
+        ) ?? (isProviderLive ? "live" : "replay")
         let optionCount = max(media.count, playerOptions.count)
         if optionCount > 0, let rawGameID, let endpoint = endpoint(for: fallbackController) {
             for index in 0..<optionCount {
@@ -537,8 +609,16 @@ enum HTMLCatalogParser {
                 ) ?? dynamicString(
                     in: feedMetadata,
                     keys: ["feed", "broadcast", "name"]
-                ), dynamicValue(in: playerOption, keys: ["youtube"]) == nil,
-                   dynamicValue(in: feedMetadata, keys: ["youtube"]) == nil else { continue }
+                ), !isYouTubeMedia(playerOption),
+                   !isYouTubeMedia(feedMetadata) else { continue }
+                let normalizedFeed = feed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard normalizedFeed != "recap", normalizedFeed != "condensed" else { continue }
+                let mediaState = dynamicString(in: playerOption, keys: ["mediastate", "state"])
+                    ?? dynamicString(in: feedMetadata, keys: ["mediastate", "state"])
+                if let mediaState, !mediaState.isEmpty,
+                   mediaState.caseInsensitiveCompare("MEDIA_ON") != .orderedSame {
+                    continue
+                }
                 let mediaID = dynamicString(
                     in: playerOption,
                     keys: ["mediaplaybackid", "mediaid", "playbackid", "id"]
@@ -549,7 +629,8 @@ enum HTMLCatalogParser {
                 let isDVR = dynamicBool(in: playerOption, keys: ["isdvr", "dvr"])
                     ?? dynamicBool(in: feedMetadata, keys: ["isdvr", "dvr"])
                     ?? false
-                let title = broadcastTitle(feed, isDVR: isDVR)
+                let presentationFeed = broadcastRole(feed, awayCode: awayCode, homeCode: homeCode)
+                let title = broadcastTitle(presentationFeed, isDVR: isDVR)
                 let playback: MediaItem.Playback
                 if let direct = dynamicString(
                     in: playerOption,
@@ -560,7 +641,7 @@ enum HTMLCatalogParser {
                 ).flatMap(directHLSURL) {
                     playback = .hls(direct)
                 } else {
-                    var arguments = [rawGameID, "live", feed.lowercased(), mediaID, String(isDVR)]
+                    var arguments = [rawGameID, playbackType, feed.lowercased(), mediaID, String(isDVR)]
                     if fallbackController == "bsb", let dateCode {
                         arguments.append(dateCode)
                     } else {
@@ -576,10 +657,12 @@ enum HTMLCatalogParser {
             }
         }
 
-        if let content = dynamicValue(in: game, keys: ["livecontent", "streams"]) as? [[String: Any]] {
+        if !liveContent.isEmpty {
             var teamFeedIndex = 0
             var dvrTeamFeedIndex = 0
-            for (index, stream) in content.enumerated() {
+            for (index, value) in liveContent.enumerated() {
+                let stream = dynamicDictionary(value)
+                guard !stream.isEmpty else { continue }
                 if dynamicBool(in: stream, keys: ["isdrm"]) == true,
                    let drmID = dynamicString(in: stream, keys: ["id", "channelid", "code"]),
                    let domesticURL = URL(string: "/PlayerDRMChannels/\(drmID)", relativeTo: baseURL)?.absoluteURL,
@@ -659,7 +742,7 @@ enum HTMLCatalogParser {
             }
         }
 
-        if options.isEmpty, let rawGameID, let endpoint = endpoint(for: fallbackController) {
+        if options.isEmpty, isProviderLive, let rawGameID, let endpoint = endpoint(for: fallbackController) {
             options.append(.init(
                 id: "default",
                 title: "Watch",
@@ -686,6 +769,30 @@ enum HTMLCatalogParser {
         default: base = normalized.localizedCapitalized.contains("Feed") ? normalized.localizedCapitalized : "\(normalized.localizedCapitalized) Feed"
         }
         return isDVR ? "\(base) · DVR" : base
+    }
+
+    private static func broadcastRole(_ feed: String, awayCode: String?, homeCode: String?) -> String {
+        let normalized = feed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let awayCode,
+           normalized.caseInsensitiveCompare(awayCode.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame {
+            return "away"
+        }
+        if let homeCode,
+           normalized.caseInsensitiveCompare(homeCode.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame {
+            return "home"
+        }
+        return feed
+    }
+
+    private static func isYouTubeMedia(_ dictionary: [String: Any]) -> Bool {
+        guard let value = dynamicValue(in: dictionary, keys: ["youtube"]), !(value is NSNull) else {
+            return false
+        }
+        if let boolean = value as? Bool { return boolean }
+        if let string = value as? String {
+            return !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
     }
 
     private static func broadcastPriority(_ title: String) -> Int {

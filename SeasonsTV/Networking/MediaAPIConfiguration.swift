@@ -78,6 +78,12 @@ enum MediaAPIRequestBuilder {
     ) -> URLRequest {
         var request = URLRequest(url: configuration.baseURL.appending(path: route.path))
         request.httpMethod = "GET"
+        if case .sportsEventDetail = route {
+            // Event details can legitimately appear after an earlier 404 when the Mac
+            // publisher finishes. The provider maintains its own ETag/disk cache, so a
+            // URLSession negative-cache hit would only hide newly published metadata.
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+        }
         request.setValue("Bearer \(configuration.readToken)", forHTTPHeaderField: "Authorization")
         request.setValue(route.accept, forHTTPHeaderField: "Accept")
         return request

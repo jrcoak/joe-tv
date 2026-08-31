@@ -121,6 +121,11 @@ final class AppModel: ObservableObject {
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_DESTINATION"] == "sports" {
+            self.destination = .sports
+        }
+        #endif
         Task { await restoreSession() }
     }
 
@@ -383,7 +388,11 @@ final class AppModel: ObservableObject {
     ) -> [SportsEventDetailIdentity] {
         var seenItems = Set<String>()
         let uniqueItems = items
-            .filter { seenItems.insert($0.id).inserted && $0.sportsEvent != nil }
+            .filter {
+                guard seenItems.insert($0.id).inserted, $0.sportsEvent != nil else { return false }
+                let phase = $0.sportsPhase(at: date)
+                return phase == .live || phase == .upcoming
+            }
             .sorted {
                 ($0.sportsEvent?.startsAt ?? .distantFuture)
                     < ($1.sportsEvent?.startsAt ?? .distantFuture)
@@ -414,12 +423,7 @@ final class AppModel: ObservableObject {
     }
 
     private func isSportsItemLive(_ item: MediaItem, at date: Date) -> Bool {
-        guard let event = item.sportsEvent else { return false }
-        let normalizedStatus = (event.status ?? "").lowercased()
-        if normalizedStatus.contains("live") || normalizedStatus.contains("progress") { return true }
-        guard event.startsAt <= date else { return false }
-        if let end = event.endsAt { return date < end }
-        return date.timeIntervalSince(event.startsAt) < 5 * 3_600
+        item.sportsPhase(at: date) == .live
     }
 
     private func refreshEPG(for channels: [LiveChannel], around date: Date) async {

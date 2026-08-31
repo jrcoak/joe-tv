@@ -140,6 +140,7 @@ enum ParserSmoke {
             route: .sportsEventDetail(detailIdentity)
         )
         guard detailRequest.url?.path == "/api/v1/sports/events/football/nfl/401772510",
+              detailRequest.cachePolicy == .reloadIgnoringLocalCacheData,
               detailRequest.value(forHTTPHeaderField: "Authorization") == "Bearer \(mediaReadToken)",
               detailRequest.value(forHTTPHeaderField: "Accept") == "application/json" else {
             fatalError("Sports event detail did not use the Personal Media API read boundary")
@@ -203,6 +204,65 @@ enum ParserSmoke {
               enrichedFootball.imageURL?.path.hasSuffix("matchup.jpg") == true,
               enrichedFootball.sportsEvent?.league == "NFL" else {
             fatalError("Sports schedule metadata was not merged without changing playback identity")
+        }
+
+        let finalFutureEvent = SportsScheduleEvent(
+            eventID: "final-future",
+            title: "Patriots at Browns",
+            sport: "Football",
+            leagueID: "nfl",
+            league: "NFL",
+            startsAt: programStart.addingTimeInterval(3_600),
+            endsAt: nil,
+            status: "Final",
+            venue: nil,
+            country: nil,
+            homeTeamID: nil,
+            homeTeam: "Browns",
+            homeTeamLogoURL: nil,
+            awayTeamID: nil,
+            awayTeam: "Patriots",
+            awayTeamLogoURL: nil,
+            homeScore: 17,
+            awayScore: 10,
+            thumbnailURL: nil,
+            sourceDate: nil,
+            sourceTime: nil,
+            broadcasts: []
+        )
+        let publishedReplay = MediaItem(
+            id: "football-replay",
+            title: "Patriots @ Browns",
+            subtitle: "Final",
+            imageURL: nil,
+            categoryID: "football",
+            playback: .hls(URL(string: "https://media.example/replay/master.m3u8")!),
+            sportsEvent: finalFutureEvent
+        )
+        let completedWithoutReplay = MediaItem(
+            id: "football-final",
+            title: "Patriots @ Browns",
+            subtitle: "Final",
+            imageURL: nil,
+            categoryID: "football",
+            playback: .unavailable,
+            sportsEvent: finalFutureEvent
+        )
+        guard publishedReplay.sportsPhase(at: programStart) == .replay,
+              completedWithoutReplay.sportsPhase(at: programStart) == .completed else {
+            fatalError("Final games must be classified from status before their inconsistent schedule timestamp")
+        }
+        let genericESPNShortcut = MediaItem(
+            id: "generic-espn",
+            title: "ESPN (Use direct link for better results)",
+            subtitle: "Live",
+            imageURL: nil,
+            categoryID: "basketball",
+            playback: .hls(URL(string: "https://media.example/espn/master.m3u8")!)
+        )
+        guard genericESPNShortcut.isGenericSportsChannelShortcut,
+              !footballPlaybackItem.isGenericSportsChannelShortcut else {
+            fatalError("Generic ESPN channel shortcuts were not distinguished from scheduled sports events")
         }
 
         let html = #"""
@@ -368,6 +428,36 @@ enum ParserSmoke {
               homeFeedURL.path.contains("aG9tZS1rZXk") else {
             fatalError("Dynamic football broadcast choices were not parsed")
         }
+
+        let footballReplayPayload = Data(#"""
+        [
+          {
+            "Id": 105,
+            "Away": "Patriots",
+            "Home": "Browns",
+            "Quarter": "F",
+            "IsFinal": true,
+            "IsLive": false,
+            "LiveContent": [
+              {"typ": 14, "descweb": "replay-away", "desc": "Away Feed"},
+              {"typ": 14, "descweb": "replay-home", "desc": "Home Feed"}
+            ]
+          }
+        ]
+        """#.utf8)
+        let footballReplays = HTMLCatalogParser.parseDynamicGames(
+            footballReplayPayload,
+            categoryID: "football",
+            controller: "fbl",
+            baseURL: baseURL,
+            directStreamTemplate: "https://media.example/[key]/master.m3u8?hmac=fixture"
+        )
+        guard footballReplays.count == 1,
+              footballReplays[0].subtitle == "Final",
+              footballReplays[0].isPlayable,
+              footballReplays[0].playbackOptions.map(\.title) == ["Home Feed", "Away Feed"] else {
+            fatalError("Published football replay feeds were discarded when IsLive was false")
+        }
         guard case .request(let dynamicAlternate) = dynamicGames[2].playback,
               dynamicAlternate.endpoint == "/Player/Watch_BKB",
               dynamicAlternate.controller == "bkb",
@@ -412,6 +502,103 @@ enum ParserSmoke {
               case .request(let awayBaseball) = officialBaseball[0].playbackOptions[1].playback,
               awayBaseball.arguments[2] == "away" else {
             fatalError("Baseball Home/Away broadcast choices were not parsed")
+        }
+
+        let teamCodeBaseballPayload = Data(#"""
+        {
+          "games": [
+            {
+              "Id": 905,
+              "Away": "COL",
+              "Away_Name": "Rockies",
+              "Home": "ATL",
+              "Home_Name": "Braves",
+              "DateCode": 20260830,
+              "IsLive": false,
+              "IsFinal": true,
+              "Media": [
+                {"feed": "COL", "mediaPlaybackId": 70},
+                {"feed": "ATL", "mediaPlaybackId": 71}
+              ]
+            }
+          ]
+        }
+        """#.utf8)
+        let teamCodeBaseball = HTMLCatalogParser.parseDynamicGames(
+            teamCodeBaseballPayload,
+            categoryID: "baseball",
+            controller: "bsb",
+            baseURL: baseURL
+        )
+        guard teamCodeBaseball.first?.playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
+              case .request(let atlReplay) = teamCodeBaseball[0].playbackOptions[0].playback,
+              atlReplay.arguments[2] == "atl",
+              case .request(let colReplay) = teamCodeBaseball[0].playbackOptions[1].playback,
+              colReplay.arguments[2] == "col" else {
+            fatalError("Team-code baseball feeds were not presented as Home/Away while retaining provider arguments")
+        }
+
+        let nullYouTubeBaseballPayload = Data(#"""
+        {
+          "games": [
+            {
+              "Id": 824876,
+              "Away": "COL",
+              "Away_Name": "Rockies",
+              "Home": "ATL",
+              "Home_Name": "Braves",
+              "DateCode": 20260830,
+              "IsLive": true,
+              "IsFinal": true,
+              "MediaOptionsForPlayer": [
+                {"feed": "Recap", "mediaPlaybackId": "0", "mediaState": null, "YouTube": null},
+                {"feed": "Home", "broadcast": "BravesVsn", "mediaPlaybackId": "8248766458", "mediaState": "MEDIA_ON", "YouTube": null},
+                {"feed": "Condensed", "mediaPlaybackId": "0", "mediaState": null, "YouTube": null},
+                {"feed": "Away", "broadcast": "COLR", "mediaPlaybackId": "8248766098", "mediaState": "MEDIA_ON", "YouTube": null}
+              ]
+            }
+          ]
+        }
+        """#.utf8)
+        let nullYouTubeBaseball = HTMLCatalogParser.parseDynamicGames(
+            nullYouTubeBaseballPayload,
+            categoryID: "baseball",
+            controller: "bsb",
+            baseURL: baseURL
+        )
+        guard nullYouTubeBaseball.first?.playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
+              nullYouTubeBaseball.first?.sportsPhase(at: epoch) == .replay else {
+            fatalError("JSON null YouTube fields discarded valid Baseball Home/Away replay media")
+        }
+        let dvrBaseballPayload = Data(#"""
+        {
+          "games": [
+            {
+              "Id": 904,
+              "Away_Name": "Mets",
+              "Home_Name": "Astros",
+              "DateCode": 20260826,
+              "IsLive": true,
+              "MediaOptionsForPlayer": [
+                {"feed": "HOME", "mediaPlaybackId": 60, "isDVR": false},
+                {"feed": "HOME", "mediaPlaybackId": 61, "isDVR": true},
+                {"feed": "AWAY", "mediaPlaybackId": 62, "isDVR": false},
+                {"feed": "AWAY", "mediaPlaybackId": 63, "isDVR": true}
+              ]
+            }
+          ]
+        }
+        """#.utf8)
+        let dvrBaseball = HTMLCatalogParser.parseDynamicGames(
+            dvrBaseballPayload,
+            categoryID: "baseball",
+            controller: "bsb",
+            baseURL: baseURL
+        )
+        guard dvrBaseball.first?.playbackOptions.map(\.title) == [
+            "Home Feed", "Home Feed · DVR", "Away Feed", "Away Feed · DVR"
+        ], dvrBaseball.first?.playbackOptions.filter(\.isStartOver).count == 2 else {
+            fatalError("Baseball live and DVR variants were not preserved for the two-stage selector")
         }
         guard let googleBaseballPayload = try? PlaybackPayloadBuilder.makePayload(for: homeBaseball, now: epoch),
               googleBaseballPayload["id"] as? Int64 == 901,
@@ -548,6 +735,25 @@ enum ParserSmoke {
               case .hls(let baseballURL) = baseball.items[0].playback,
               baseballURL.path.hasSuffix("master.m3u8") else {
             fatalError("Lazy-loaded Baseball events were not parsed")
+        }
+
+        let multiFeedBaseballHTML = #"""
+        <div id="baseball"><table><tbody><tr>
+          <td>Colorado Rockies vs. Atlanta Braves</td>
+          <td>
+            <button ng-click="bsb.Watch(905,'replay','COL',70,false,{})">COL</button>
+            <button ng-click="bsb.Watch(905,'replay','ATL',71,false,{})">ATL</button>
+          </td>
+        </tr></tbody></table></div>
+        """#
+        let multiFeedBaseball = HTMLCatalogParser.parseCatalog(multiFeedBaseballHTML, baseURL: baseURL)
+            .first(where: { $0.id == "baseball" })?.items.first
+        guard multiFeedBaseball?.playbackOptions.map(\.title) == ["Home Feed", "Away Feed"],
+              case .request(let htmlHomeFeed) = multiFeedBaseball?.playbackOptions[0].playback,
+              htmlHomeFeed.arguments[2] == "ATL",
+              case .request(let htmlAwayFeed) = multiFeedBaseball?.playbackOptions[1].playback,
+              htmlAwayFeed.arguments[2] == "COL" else {
+            fatalError("Multiple team-code actions in one Baseball HTML row were not preserved as Home/Away feeds")
         }
 
         let scheduledBaseballPayload = Data(#"""

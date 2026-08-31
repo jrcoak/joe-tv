@@ -40,6 +40,49 @@ struct MediaItem: Identifiable {
         let id: String
         let title: String
         let playback: Playback
+
+        var isPlayable: Bool {
+            if case .unavailable = playback { return false }
+            return true
+        }
+
+        var isStartOver: Bool {
+            if title.localizedCaseInsensitiveContains("dvr") ||
+                title.localizedCaseInsensitiveContains("start over") ||
+                title.localizedCaseInsensitiveContains("beginning") {
+                return true
+            }
+            guard case .request(let request) = playback,
+                  request.arguments.indices.contains(4) else { return false }
+            return request.arguments[4].caseInsensitiveCompare("true") == .orderedSame
+        }
+
+        var broadcastKey: String {
+            let requestFeed: String? = {
+                guard case .request(let request) = playback,
+                      request.arguments.indices.contains(2) else { return nil }
+                return request.arguments[2]
+            }()
+            let titleValue = title.lowercased()
+            if titleValue.contains("home") { return "home" }
+            if titleValue.contains("away") { return "away" }
+            if titleValue.contains("national") { return "national" }
+            let value = (requestFeed ?? title).lowercased()
+            if value.contains("home") { return "home" }
+            if value.contains("away") { return "away" }
+            if value.contains("national") { return "national" }
+            if value.contains("spanish") { return "spanish" }
+            if value.contains("international") || value.contains("intl") { return "international" }
+            if value.contains("radio") { return "radio" }
+            if value.contains("alternate") { return "alternate" }
+            if value.contains("us feed") { return "us" }
+            return title
+                .replacingOccurrences(of: "· 5-min DVR", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "· DVR", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "DVR", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+        }
     }
 
     let id: String
@@ -100,6 +143,62 @@ struct MediaItem: Identifiable {
 
     var isPlayable: Bool {
         playbackOptions.contains(where: \.isPlayable)
+    }
+}
+
+enum SportsEventPhase: Equatable {
+    case live
+    case upcoming
+    case replay
+    case completed
+}
+
+extension MediaItem {
+    var isGenericSportsChannelShortcut: Bool {
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.hasPrefix("espn") && normalized.contains("use direct link") { return true }
+        guard categoryID == "basketball" else { return false }
+        return sportsEvent == nil && (normalized == "espn" || normalized == "espn 2")
+    }
+
+    func sportsPhase(at date: Date) -> SportsEventPhase {
+        let statusText = [sportsEvent?.status, subtitle]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .joined(separator: " ")
+
+        if Self.containsCompletionSignal(statusText) {
+            return isPlayable ? .replay : .completed
+        }
+        if statusText.contains("replay") {
+            return .replay
+        }
+        if Self.containsLiveSignal(statusText) {
+            return .live
+        }
+
+        guard let event = sportsEvent else {
+            return isPlayable ? .live : .upcoming
+        }
+        if event.startsAt > date {
+            return .upcoming
+        }
+        if let end = event.endsAt, date < end {
+            return .live
+        }
+        if event.endsAt == nil, date.timeIntervalSince(event.startsAt) < 5 * 3_600 {
+            return .live
+        }
+        return isPlayable ? .replay : .completed
+    }
+
+    private static func containsCompletionSignal(_ value: String) -> Bool {
+        ["final", "complete", "ended", "full time", "post-game", "postgame"]
+            .contains(where: value.contains)
+    }
+
+    private static func containsLiveSignal(_ value: String) -> Bool {
+        ["live", "progress", "in progress", "halftime", "period", "quarter"]
+            .contains(where: value.contains)
     }
 }
 
@@ -281,13 +380,6 @@ struct SportsEventDetail: Decodable, Equatable, Sendable {
         case highlights
         case fetchedAt
         case expiresAt
-    }
-}
-
-private extension MediaItem.PlaybackOption {
-    var isPlayable: Bool {
-        if case .unavailable = playback { return false }
-        return true
     }
 }
 
