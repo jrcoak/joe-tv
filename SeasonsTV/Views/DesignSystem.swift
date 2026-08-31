@@ -2,15 +2,22 @@ import SwiftUI
 import UIKit
 
 enum SeasonTheme {
-    static let background = Color(red: 0.018, green: 0.02, blue: 0.024)
-    static let surface = Color.white.opacity(0.065)
-    static let raisedSurface = Color.white.opacity(0.10)
-    static let keyline = Color.white.opacity(0.13)
-    static let accent = Color(red: 0.86, green: 0.64, blue: 0.28)
-    static let warm = Color(red: 0.93, green: 0.39, blue: 0.20)
+    /// JOE-TV's warm, editorial palette. Volt is reserved for remote focus.
+    static let background = Color(red: 0.031, green: 0.039, blue: 0.051) // #080A0D
+    static let paper = Color(red: 0.957, green: 0.949, blue: 0.929) // #F4F2ED
+    static let liveSignal = Color(red: 1.0, green: 0.357, blue: 0.208) // #FF5B35
+    static let focusVolt = Color(red: 0.839, green: 1.0, blue: 0.294) // #D6FF4B
+    static let surface = Color(red: 0.066, green: 0.082, blue: 0.102)
+    static let raisedSurface = Color(red: 0.086, green: 0.106, blue: 0.129)
+    static let keyline = paper.opacity(0.14)
+    static let secondaryText = paper.opacity(0.58)
+    static let accent = liveSignal
+    static let warm = liveSignal
     static let horizontalInset: CGFloat = 72
-    static let controlRadius: CGFloat = 16
-    static let cardRadius: CGFloat = 18
+    static let controlRadius: CGFloat = 10
+    static let cardRadius: CGFloat = 12
+    static let focusLineWidth: CGFloat = 4
+    static let focusAnimation = Animation.easeOut(duration: 0.16)
 }
 
 struct FocusPillButtonStyle: ButtonStyle {
@@ -29,23 +36,21 @@ struct FocusPillButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.headline)
-                .foregroundStyle(isFocused ? Color.black : Color.white)
+                .foregroundStyle(SeasonTheme.paper)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(
-                    isFocused
-                        ? Color.white
-                        : isSelected ? SeasonTheme.accent.opacity(0.24) : SeasonTheme.surface,
+                    isSelected ? SeasonTheme.paper.opacity(0.13) : SeasonTheme.surface,
                     in: Capsule()
                 )
                 .overlay {
                     Capsule().stroke(
-                        isFocused ? Color.white : isSelected ? SeasonTheme.accent : SeasonTheme.keyline,
-                        lineWidth: isSelected ? 2 : 1
+                        isFocused ? SeasonTheme.focusVolt : isSelected ? SeasonTheme.paper.opacity(0.72) : SeasonTheme.keyline,
+                        lineWidth: isFocused ? SeasonTheme.focusLineWidth : isSelected ? 2 : 1
                     )
                 }
                 .scaleEffect(configuration.isPressed ? 0.97 : isFocused ? 1.04 : 1)
-                .shadow(color: isFocused ? .black.opacity(0.34) : .clear, radius: 14, y: 7)
+                .shadow(color: isFocused ? SeasonTheme.focusVolt.opacity(0.16) : .clear, radius: 18)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isFocused)
         }
     }
@@ -67,16 +72,20 @@ struct TopNavigationButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.system(size: 21, weight: isSelected ? .semibold : .medium))
-                .foregroundStyle(isFocused || isSelected ? Color.white : Color.white.opacity(0.62))
+                .foregroundStyle(isFocused || isSelected ? SeasonTheme.paper : SeasonTheme.secondaryText)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 13)
                 .background {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(isFocused ? Color.white.opacity(0.13) : .clear)
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isFocused ? SeasonTheme.raisedSurface : .clear)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isFocused ? SeasonTheme.focusVolt : .clear, lineWidth: SeasonTheme.focusLineWidth)
                 }
                 .overlay(alignment: .bottom) {
                     Capsule()
-                        .fill(SeasonTheme.accent)
+                        .fill(SeasonTheme.paper)
                         .frame(width: isSelected ? 28 : 0, height: 3)
                         .offset(y: 5)
                 }
@@ -149,7 +158,7 @@ struct StatePanel: View {
             Image(systemName: symbol)
                 .font(.system(size: 48))
                 .foregroundStyle(SeasonTheme.accent)
-            Text(title).font(.title2.bold())
+            Text(title).font(.title2.bold()).foregroundStyle(SeasonTheme.paper)
             Text(message)
                 .font(.title3)
                 .foregroundStyle(.secondary)
@@ -171,7 +180,7 @@ struct InlineStatusBanner: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .foregroundStyle(SeasonTheme.accent)
+                .foregroundStyle(SeasonTheme.liveSignal)
             Text(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -217,7 +226,7 @@ struct BrandMark: View {
 
             ForEach(0..<4, id: \.self) { index in
                 Capsule()
-                    .fill(SeasonTheme.accent.opacity(0.58 + Double(index) * 0.12))
+                    .fill(index == 0 ? SeasonTheme.liveSignal : SeasonTheme.paper.opacity(0.30 + Double(index) * 0.12))
                     .frame(width: size * 0.15, height: size * 0.31)
                     .offset(y: -size * 0.18)
                     .rotationEffect(.degrees(Double(index) * 90))
@@ -229,7 +238,7 @@ struct BrandMark: View {
                 .overlay {
                     Image(systemName: "play.fill")
                         .font(.system(size: size * 0.12, weight: .bold))
-                        .foregroundStyle(SeasonTheme.accent)
+                        .foregroundStyle(SeasonTheme.liveSignal)
                         .offset(x: size * 0.01)
                 }
         }

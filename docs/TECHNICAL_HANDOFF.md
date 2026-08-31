@@ -174,6 +174,7 @@ AppModel (@MainActor, ObservableObject)
 - `liveChannels`: available channels filtered and ordered by `ChannelDirectory`.
 - `epgState` and `channelStationMappings`: independent guide load and numeric mapping state.
 - `sportsSchedule` and `sportsScheduleState`: independent ESPN schedule metadata loaded with the same app-scoped read token.
+- `sportsEventDetails`: Mac-published preview/recap metadata keyed by allowlisted sport, league, and ESPN event ID.
 - `enabledSportsCategoryIDs`: UserDefaults-backed category visibility; the first-run default is Football, Baseball, Hockey, and Basketball only.
 - `selectedCategoryID`: selected sports/events category, initially `football`.
 - `isWorking`: controls short blocking sign-in/playback preparation only; refresh is nonblocking.
@@ -256,6 +257,7 @@ The implementation is based on authenticated inspection of these routes:
 | `/PlayerDRMChannels/International/{id}` | International variant; may prefix the transformed license URL with a proxy route. |
 | `GET https://personal-media-api.vercel.app/api/v1/guide/xmltv` | `MEDIA_READ_TOKEN`-authenticated, gzip-encoded XMLTV document with ETag revalidation. |
 | `GET https://personal-media-api.vercel.app/api/v1/sports/schedule` | `MEDIA_READ_TOKEN`-authenticated normalized sports JSON with a separate ETag/cache lifecycle and no playback URLs. |
+| `GET https://personal-media-api.vercel.app/api/v1/sports/events/{sport}/{league}/{eventId}` | `MEDIA_READ_TOKEN`-authenticated event metadata previously fetched and normalized by the Mac mini; Vercel and Joe-TV never contact ESPN. |
 
 These are private implementation contracts rather than a documented public API. Every one should be treated as changeable.
 
@@ -391,11 +393,11 @@ FairPlay-protected video cannot be validated in the tvOS Simulator. During devel
 
 ## 12. TV guide, sports schedule, and private build authentication
 
-`XMLTVGuideProvider` implements `EPGProviding` and `SportsScheduleProviding`. The Personal Media API is intentionally a separate authentication and failure domain from Seasons4U.
+`XMLTVGuideProvider` implements `EPGProviding`, `SportsScheduleProviding`, and `SportsEventDetailProviding`. The Personal Media API is intentionally a separate authentication and failure domain from Seasons4U.
 
 ### Credential selection
 
-This client calls only `/api/v1/guide/xmltv` and `/api/v1/sports/schedule` on the Personal Media API. Each request receives `Authorization: Bearer <MEDIA_READ_TOKEN>` individually; the token is not installed as a global `URLSession` header and is never sent to Seasons4U, publishing, pairing, discovery, history, feedback, or refresh routes. There is no television pairing screen or pairing-code exchange.
+This client calls only `/api/v1/guide/xmltv`, `/api/v1/sports/schedule`, and allowlisted `/api/v1/sports/events/{sport}/{league}/{eventId}` reads on the Personal Media API. Each request receives `Authorization: Bearer <MEDIA_READ_TOKEN>` individually; the token is not installed as a global `URLSession` header and is never sent to Seasons4U, ESPN, publishing, pairing, discovery, history, feedback, or refresh routes. There is no television pairing screen or pairing-code exchange.
 
 `MediaAPIConfiguration` loads the base URL and token from the built app's Info.plist expansion and rejects a missing URL, a token shorter than 32 characters, or an unexpanded/placeholder value. This is source-control protection and an operational guard, not tamper-proof secret storage: a person with the private app bundle can extract the token. The server-side read-only route scope and central revocation boundary are therefore required.
 
@@ -413,6 +415,8 @@ Guide requests send the app-scoped bearer token and `Accept: application/xml`. U
 The ETag and refresh date are not secrets. The read token is never placed in UserDefaults or either cache.
 
 Sports schedule requests use the same route-limited read token but call `/api/v1/sports/schedule` with `Accept: application/json`. They have separate five-minute attempt tracking, ETag, refresh timestamp, and atomic last-known-good JSON cache. The decoded event model preserves league, teams, scores, status, time, venue, thumbnail, team logos, and broadcast networks. Schedule-only events use `.unavailable`; matching a schedule record to a Seasons4U item enriches presentation while preserving the Seasons4U playback identity and options. The UI prefers the schedule thumbnail, then composes high-resolution home/away logos, and uses Seasons4U artwork only as the last fallback.
+
+Event-detail reads use the same token and only the NFL, MLB, NBA, and NHL route identities derived from a published schedule event. AppModel immediately renders schedule/team data, then prefetches the featured event plus four nearby events in batches of two. Focus outside that window is debounced by 350 ms and cancellation-safe, so rapid scrolling never waits on metadata. Each detail has an independent ETag and atomic Caches-directory fallback. The featured card prefers the published hero image and displays the normalized headline, description, and detailed status when available; 404 or stale data leaves the schedule/playback UI intact.
 
 ### Parsing and mapping
 
@@ -472,6 +476,7 @@ AVPlayer failures are separate because they occur after the network orchestratio
 - mixed DRM/legacy channel identity parsing and the complete 66-channel directory;
 - XMLTV numeric-only station matching, overlap filtering, metadata, and ordering;
 - normalized sports JSON decoding, network/logo preservation, and schedule-to-playback enrichment without playback-identity changes;
+- allowlisted event-detail routing and decoding through Personal Media API, including hero, venue, status, and ETag-compatible identity fields;
 - escaped HLS URL parsing;
 - FPS HLS/certificate/header/international-proxy parsing.
 - the fixed 29-channel Very Local station directory, namespaced playback identities, and public-playback model cases.

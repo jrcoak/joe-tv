@@ -21,6 +21,7 @@
 		AA0000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000009 /* Assets.xcassets */; };
 		AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* MediaAPIConfiguration.swift */; };
 		AA0000000000000000000012 /* VeryLocalClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* VeryLocalClient.swift */; };
+		AA0000000000000000000013 /* JoeTVExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* JoeTVExperience.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		BB0000000000000000000011 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		BB0000000000000000000012 /* Private.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Private.example.xcconfig; sourceTree = "<group>"; };
 		BB0000000000000000000013 /* VeryLocalClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeryLocalClient.swift; sourceTree = "<group>"; };
+		BB0000000000000000000014 /* JoeTVExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoeTVExperience.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				BB000000000000000000000D /* DesignSystem.swift */,
+				BB0000000000000000000014 /* JoeTVExperience.swift */,
 				BB0000000000000000000007 /* RootView.swift */,
 				BB0000000000000000000008 /* PlayerScreen.swift */,
 			);
@@ -258,6 +261,7 @@
 				AA000000000000000000000F /* XMLTVGuideProvider.swift in Sources */,
 				AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */,
 				AA0000000000000000000012 /* VeryLocalClient.swift in Sources */,
+				AA0000000000000000000013 /* JoeTVExperience.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

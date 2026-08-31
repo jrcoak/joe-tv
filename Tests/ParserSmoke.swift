@@ -130,6 +130,61 @@ enum ParserSmoke {
               sportsSchedule.events.first?.broadcastChannels == ["ESPN", "NFL Network"] else {
             fatalError("Sports schedule JSON or artwork metadata was not decoded")
         }
+        guard let event = sportsSchedule.events.first,
+              let detailIdentity = SportsEventDetailIdentity(event: event),
+              detailIdentity.cacheKey == "football/nfl/401772510" else {
+            fatalError("ESPN event identity was not restricted to an allowlisted league")
+        }
+        let detailRequest = MediaAPIRequestBuilder.makeRequest(
+            configuration: mediaConfiguration,
+            route: .sportsEventDetail(detailIdentity)
+        )
+        guard detailRequest.url?.path == "/api/v1/sports/events/football/nfl/401772510",
+              detailRequest.value(forHTTPHeaderField: "Authorization") == "Bearer \(mediaReadToken)",
+              detailRequest.value(forHTTPHeaderField: "Accept") == "application/json" else {
+            fatalError("Sports event detail did not use the Personal Media API read boundary")
+        }
+        let sportsDetailJSON = Data(#"""
+        {
+          "provider": "ESPN",
+          "eventId": "401772510",
+          "sport": "football",
+          "league": "nfl",
+          "kind": "preview",
+          "headline": "Giants visit the Patriots in Foxborough",
+          "description": "New England hosts New York under the lights.",
+          "publishedAt": "2026-08-14T10:00:00Z",
+          "lastModifiedAt": "2026-08-14T10:30:00.123Z",
+          "heroImage": {
+            "url": "https://media.example/game-hero.jpg",
+            "width": 1600,
+            "height": 900,
+            "alt": "Patriots and Giants",
+            "kind": "article"
+          },
+          "status": {
+            "state": "pre",
+            "name": "STATUS_SCHEDULED",
+            "description": "Scheduled",
+            "detail": "Friday at 7:10 PM EDT",
+            "shortDetail": "7:10 PM"
+          },
+          "venue": {"name":"Gillette Stadium","city":"Foxborough","state":"MA","country":"USA"},
+          "weather": {"displayValue":"Clear","temperature":71,"condition":"Clear","wind":"NW 5 mph"},
+          "highlights": [],
+          "fetchedAt": "2026-08-14T12:00:00Z",
+          "expiresAt": "2026-08-14T12:30:00Z"
+        }
+        """#.utf8)
+        guard let detail = try? SportsEventDetailDecoder.decode(
+            sportsDetailJSON,
+            identity: detailIdentity
+        ),
+              detail.heroImage?.url.path.hasSuffix("game-hero.jpg") == true,
+              detail.venue?.name == "Gillette Stadium",
+              detail.status?.state == "pre" else {
+            fatalError("Published sports event detail was not decoded")
+        }
         let footballPlaybackItem = MediaItem(
             id: "s4u-football-1",
             title: "Giants @ Patriots",

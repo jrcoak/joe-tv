@@ -182,6 +182,108 @@ struct SportsScheduleSnapshot: Decodable, Equatable {
     let events: [SportsScheduleEvent]
 }
 
+struct SportsEventDetailIdentity: Hashable, Sendable {
+    let sport: String
+    let league: String
+    let eventID: String
+
+    init?(event: SportsScheduleEvent) {
+        guard let league = event.leagueID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() else { return nil }
+        let sport: String
+        switch league {
+        case "nfl": sport = "football"
+        case "mlb": sport = "baseball"
+        case "nba": sport = "basketball"
+        case "nhl": sport = "hockey"
+        default: return nil
+        }
+        guard !event.eventID.isEmpty, event.eventID.allSatisfy(\.isNumber) else { return nil }
+        self.sport = sport
+        self.league = league
+        self.eventID = event.eventID
+    }
+
+    var cacheKey: String { "\(sport)/\(league)/\(eventID)" }
+}
+
+struct SportsEventDetailImage: Decodable, Equatable, Sendable {
+    let url: URL
+    let width: Int?
+    let height: Int?
+    let alt: String?
+    let kind: String
+}
+
+struct SportsEventDetailStatus: Decodable, Equatable, Sendable {
+    let state: String?
+    let name: String?
+    let description: String?
+    let detail: String?
+    let shortDetail: String?
+}
+
+struct SportsEventDetailVenue: Decodable, Equatable, Sendable {
+    let name: String?
+    let city: String?
+    let state: String?
+    let country: String?
+}
+
+struct SportsEventDetailWeather: Decodable, Equatable, Sendable {
+    let displayValue: String?
+    let temperature: Int?
+    let condition: String?
+    let wind: String?
+}
+
+struct SportsEventHighlight: Decodable, Equatable, Sendable {
+    let id: String?
+    let title: String
+    let description: String?
+    let duration: String?
+    let thumbnail: SportsEventDetailImage?
+}
+
+struct SportsEventDetail: Decodable, Equatable, Sendable {
+    let provider: String
+    let eventID: String
+    let sport: String
+    let league: String
+    let kind: String
+    let headline: String?
+    let description: String?
+    let publishedAt: Date?
+    let lastModifiedAt: Date?
+    let heroImage: SportsEventDetailImage?
+    let status: SportsEventDetailStatus?
+    let venue: SportsEventDetailVenue?
+    let weather: SportsEventDetailWeather?
+    let highlights: [SportsEventHighlight]
+    let fetchedAt: Date
+    let expiresAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case eventID = "eventId"
+        case sport
+        case league
+        case kind
+        case headline
+        case description
+        case publishedAt
+        case lastModifiedAt
+        case heroImage
+        case status
+        case venue
+        case weather
+        case highlights
+        case fetchedAt
+        case expiresAt
+    }
+}
+
 private extension MediaItem.PlaybackOption {
     var isPlayable: Bool {
         if case .unavailable = playback { return false }
@@ -305,6 +407,12 @@ protocol EPGProviding {
 
 protocol SportsScheduleProviding {
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot
+}
+
+protocol SportsEventDetailProviding: Sendable {
+    func loadSportsEventDetail(
+        identity: SportsEventDetailIdentity
+    ) async throws -> SportsEventDetail?
 }
 
 enum EPGLoadState: Equatable {

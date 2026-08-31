@@ -52,18 +52,21 @@ struct MediaAPIConfiguration: Sendable, Equatable {
 enum MediaAPIReadRoute: Sendable {
     case guideXMLTV
     case sportsSchedule
+    case sportsEventDetail(SportsEventDetailIdentity)
 
     var path: String {
         switch self {
         case .guideXMLTV: return "/api/v1/guide/xmltv"
         case .sportsSchedule: return "/api/v1/sports/schedule"
+        case .sportsEventDetail(let identity):
+            return "/api/v1/sports/events/\(identity.sport)/\(identity.league)/\(identity.eventID)"
         }
     }
 
     var accept: String {
         switch self {
         case .guideXMLTV: return "application/xml"
-        case .sportsSchedule: return "application/json"
+        case .sportsSchedule, .sportsEventDetail: return "application/json"
         }
     }
 }

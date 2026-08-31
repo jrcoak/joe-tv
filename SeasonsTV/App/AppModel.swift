@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     enum Destination: Hashable {
+        case home
         case liveTV
         case sports
     }
@@ -18,7 +19,7 @@ final class AppModel: ObservableObject {
     @Published var liveChannels: [LiveChannel] = []
     @Published private(set) var availableLiveChannels: [LiveChannel] = []
     @Published var selectedCategoryID = "football"
-    @Published var destination: Destination = .liveTV
+    @Published var destination: Destination = .home
     @Published var liveSearchQuery = ""
     @Published var selectedChannelGenre: ChannelGenre?
     @Published var guideTimeAnchor = Date()
@@ -28,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var disabledChannelIDs: Set<String>
     @Published private(set) var enabledSportsCategoryIDs: Set<String>
     @Published private(set) var sportsSchedule: SportsScheduleSnapshot?
+    @Published private(set) var sportsEventDetails: [String: SportsEventDetail] = [:]
     @Published var sportsScheduleState: ContentLoadState = .idle
     @Published var channelStationMappings: [String: String] = [:]
     @Published var channelState: ContentLoadState = .idle
@@ -44,10 +46,13 @@ final class AppModel: ObservableObject {
     let veryLocalClient: VeryLocalClient
     private let epgProvider: EPGProviding?
     private let sportsScheduleProvider: SportsScheduleProviding?
+    private let sportsEventDetailProvider: SportsEventDetailProviding?
     private let defaults: UserDefaults
     private var playbackCategories: [CatalogCategory] = []
     private var epgRequestID = UUID()
     private var sportsScheduleRequestID = UUID()
+    private var sportsDetailPrefetchTask: Task<Void, Never>?
+    private var sportsDetailFocusTask: Task<Void, Never>?
 
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
     private static let disabledChannelsKey = "channels.disabledIDs"
@@ -99,6 +104,7 @@ final class AppModel: ObservableObject {
         self.veryLocalClient = veryLocalClient
         self.epgProvider = epgProvider
         self.sportsScheduleProvider = epgProvider as? SportsScheduleProviding
+        self.sportsEventDetailProvider = epgProvider as? SportsEventDetailProviding
         self.defaults = defaults
         LegacyScheduleCredentialCleanup.run(defaults: defaults)
         if let stored = defaults.array(forKey: Self.disabledChannelsKey) as? [String] {
@@ -142,12 +148,14 @@ final class AppModel: ObservableObject {
         }
         defaults.set(Array(enabledSportsCategoryIDs).sorted(), forKey: Self.enabledSportsCategoriesKey)
         reconcileSelectedCategory()
+        prefetchFeaturedSportsDetails()
     }
 
     func restoreDefaultSportsCategories() {
         enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         defaults.set(Array(enabledSportsCategoryIDs).sorted(), forKey: Self.enabledSportsCategoriesKey)
         reconcileSelectedCategory()
+        prefetchFeaturedSportsDetails()
     }
 
     func isChannelEnabled(_ channelID: String) -> Bool {
@@ -300,6 +308,7 @@ final class AppModel: ObservableObject {
             categories = SportsScheduleEnricher.merge(snapshot, into: playbackCategories)
             reconcileSelectedCategory()
             sportsScheduleState = .loaded
+            prefetchFeaturedSportsDetails()
         } catch {
             guard sportsScheduleRequestID == requestID else { return }
             sportsScheduleState = .failed(error.localizedDescription)
@@ -312,6 +321,105 @@ final class AppModel: ObservableObject {
             selectedCategoryID = visible.first?.id ?? "football"
             lastFocusedEventID = nil
         }
+    }
+
+    func sportsEventDetail(for item: MediaItem) -> SportsEventDetail? {
+        guard let event = item.sportsEvent,
+              let identity = SportsEventDetailIdentity(event: event) else { return nil }
+        return sportsEventDetails[identity.cacheKey]
+    }
+
+    func prefetchSportsEventDetails(for items: [MediaItem], at date: Date = Date()) {
+        guard let provider = sportsEventDetailProvider else { return }
+        let identities = featuredAndNextDetailIdentities(from: items, at: date)
+            .filter { sportsEventDetails[$0.cacheKey] == nil }
+        guard !identities.isEmpty else { return }
+
+        sportsDetailPrefetchTask?.cancel()
+        sportsDetailPrefetchTask = Task { [weak self] in
+            for batchStart in stride(from: 0, to: identities.count, by: 2) {
+                guard !Task.isCancelled else { return }
+                let batchEnd = min(batchStart + 2, identities.count)
+                let batch = Array(identities[batchStart..<batchEnd])
+                await withTaskGroup(of: (String, SportsEventDetail?).self) { group in
+                    for identity in batch {
+                        group.addTask {
+                            let detail = try? await provider.loadSportsEventDetail(identity: identity)
+                            return (identity.cacheKey, detail ?? nil)
+                        }
+                    }
+                    for await (cacheKey, detail) in group {
+                        guard !Task.isCancelled, let detail else { continue }
+                        self?.sportsEventDetails[cacheKey] = detail
+                    }
+                }
+            }
+        }
+    }
+
+    func focusSportsEvent(_ event: SportsScheduleEvent?) {
+        sportsDetailFocusTask?.cancel()
+        guard let event,
+              let identity = SportsEventDetailIdentity(event: event),
+              sportsEventDetails[identity.cacheKey] == nil,
+              let provider = sportsEventDetailProvider else { return }
+
+        sportsDetailFocusTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled,
+                  let detail = try? await provider.loadSportsEventDetail(identity: identity),
+                  !Task.isCancelled else { return }
+            self?.sportsEventDetails[identity.cacheKey] = detail
+        }
+    }
+
+    private func prefetchFeaturedSportsDetails() {
+        prefetchSportsEventDetails(for: visibleSportsCategories.flatMap(\.items))
+    }
+
+    private func featuredAndNextDetailIdentities(
+        from items: [MediaItem],
+        at date: Date
+    ) -> [SportsEventDetailIdentity] {
+        var seenItems = Set<String>()
+        let uniqueItems = items
+            .filter { seenItems.insert($0.id).inserted && $0.sportsEvent != nil }
+            .sorted {
+                ($0.sportsEvent?.startsAt ?? .distantFuture)
+                    < ($1.sportsEvent?.startsAt ?? .distantFuture)
+            }
+        let liveItems = uniqueItems.filter { isSportsItemLive($0, at: date) }
+        let laterItems = uniqueItems.filter { item in
+            guard let start = item.sportsEvent?.startsAt else { return false }
+            return start > date && Calendar.current.isDate(start, inSameDayAs: date)
+        }
+        let featured = liveItems.first(where: \.isPlayable)
+            ?? liveItems.first
+            ?? laterItems.first
+            ?? uniqueItems.first
+
+        var ordered: [MediaItem] = []
+        if let featured { ordered.append(featured) }
+        ordered.append(contentsOf: liveItems)
+        ordered.append(contentsOf: laterItems)
+        ordered.append(contentsOf: uniqueItems)
+
+        var seenIdentities = Set<SportsEventDetailIdentity>()
+        return ordered.compactMap { item in
+            guard let event = item.sportsEvent,
+                  let identity = SportsEventDetailIdentity(event: event),
+                  seenIdentities.insert(identity).inserted else { return nil }
+            return identity
+        }.prefix(5).map { $0 }
+    }
+
+    private func isSportsItemLive(_ item: MediaItem, at date: Date) -> Bool {
+        guard let event = item.sportsEvent else { return false }
+        let normalizedStatus = (event.status ?? "").lowercased()
+        if normalizedStatus.contains("live") || normalizedStatus.contains("progress") { return true }
+        guard event.startsAt <= date else { return false }
+        if let end = event.endsAt { return date < end }
+        return date.timeIntervalSince(event.startsAt) < 5 * 3_600
     }
 
     private func refreshEPG(for channels: [LiveChannel], around date: Date) async {
@@ -492,6 +600,8 @@ final class AppModel: ObservableObject {
     }
 
     func signOut() {
+        sportsDetailPrefetchTask?.cancel()
+        sportsDetailFocusTask?.cancel()
         playbackSession?.player.pause()
         playbackSession = nil
         client.clearLocalSession()
@@ -501,7 +611,7 @@ final class AppModel: ObservableObject {
         availableLiveChannels = []
         isVeryLocalOnly = false
         selectedCategoryID = "football"
-        destination = .liveTV
+        destination = .home
         liveSearchQuery = ""
         selectedChannelGenre = nil
         guideTimeAnchor = Date()
@@ -509,6 +619,7 @@ final class AppModel: ObservableObject {
         lastFocusedEventID = nil
         epgState = .unavailable
         sportsSchedule = nil
+        sportsEventDetails = [:]
         sportsScheduleState = .idle
         channelStationMappings = [:]
         epgRequestID = UUID()
@@ -525,7 +636,7 @@ final class AppModel: ObservableObject {
         playbackSession = nil
         errorMessage = nil
         isVeryLocalOnly = true
-        destination = .liveTV
+        destination = .home
         liveSearchQuery = ""
         selectedChannelGenre = nil
         lastFocusedLiveID = nil

@@ -9,6 +9,7 @@ enum EPGServiceError: LocalizedError {
     case invalidGuide
     case sportsScheduleNotPublished
     case invalidSportsSchedule
+    case invalidSportsEventDetail
     case serverStatus(Int)
 
     var errorDescription: String? {
@@ -29,13 +30,15 @@ enum EPGServiceError: LocalizedError {
             return "Sports schedule data has not been published yet. Try again later."
         case .invalidSportsSchedule:
             return "The sports schedule service returned data that could not be read."
+        case .invalidSportsEventDetail:
+            return "The sports event detail service returned data that could not be read."
         case .serverStatus(let status):
             return "The schedule service returned status \(status)."
         }
     }
 }
 
-actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
+actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDetailProviding {
     private static let minimumRefreshInterval: TimeInterval = 5 * 60
     private static let etagKey = "epg.xmltv.etag"
     private static let lastRefreshKey = "epg.xmltv.lastRefresh"
@@ -50,10 +53,13 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
     private let configurationError: MediaAPIConfigurationError?
     private let cacheURL: URL
     private let sportsCacheURL: URL
+    private let cacheDirectory: URL
     private var lastRefresh: Date?
     private var lastAttempt: Date?
     private var sportsLastRefresh: Date?
     private var sportsLastAttempt: Date?
+    private var sportsDetailLastAttempts: [String: Date] = [:]
+    private var sportsDetailMemoryCache: [String: SportsEventDetail] = [:]
 
     init(
         session: URLSession = .shared,
@@ -78,6 +84,7 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
         self.sportsLastAttempt = defaults.object(forKey: Self.sportsLastAttemptKey) as? Date
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
+        self.cacheDirectory = cacheDirectory
         self.cacheURL = cacheDirectory.appending(path: "seasonstv-guide.xmltv")
         self.sportsCacheURL = cacheDirectory.appending(path: "seasonstv-sports-schedule.json")
     }
@@ -117,6 +124,69 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
             return snapshot
         } catch {
             throw EPGServiceError.invalidSportsSchedule
+        }
+    }
+
+    func loadSportsEventDetail(
+        identity: SportsEventDetailIdentity
+    ) async throws -> SportsEventDetail? {
+        let configuration = try requireConfiguration()
+        let cacheURL = sportsDetailCacheURL(identity: identity)
+        let cachedData = try? Data(contentsOf: cacheURL)
+        if let lastAttempt = sportsDetailLastAttempts[identity.cacheKey],
+           Date().timeIntervalSince(lastAttempt) < Self.minimumRefreshInterval {
+            if let detail = sportsDetailMemoryCache[identity.cacheKey] { return detail }
+            return try cachedData.map { try SportsEventDetailDecoder.decode($0, identity: identity) }
+        }
+
+        var request = MediaAPIRequestBuilder.makeRequest(
+            configuration: configuration,
+            route: .sportsEventDetail(identity)
+        )
+        let etagKey = sportsDetailETagKey(identity: identity)
+        if let etag = defaults.string(forKey: etagKey), !etag.isEmpty {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        sportsDetailLastAttempts[identity.cacheKey] = Date()
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw EPGServiceError.invalidSportsEventDetail
+            }
+            switch httpResponse.statusCode {
+            case 200:
+                guard !data.isEmpty else { throw EPGServiceError.invalidSportsEventDetail }
+                let detail = try SportsEventDetailDecoder.decode(data, identity: identity)
+                try data.write(to: cacheURL, options: .atomic)
+                if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                    defaults.set(etag, forKey: etagKey)
+                }
+                sportsDetailMemoryCache[identity.cacheKey] = detail
+                return detail
+            case 304:
+                guard let cachedData else { throw EPGServiceError.invalidSportsEventDetail }
+                let detail = try SportsEventDetailDecoder.decode(cachedData, identity: identity)
+                sportsDetailMemoryCache[identity.cacheKey] = detail
+                return detail
+            case 401:
+                throw EPGServiceError.authorizationInvalid
+            case 404:
+                guard let cachedData else { return nil }
+                let detail = try SportsEventDetailDecoder.decode(cachedData, identity: identity)
+                sportsDetailMemoryCache[identity.cacheKey] = detail
+                return detail
+            case 503:
+                throw EPGServiceError.serviceNotConfigured
+            default:
+                throw EPGServiceError.serverStatus(httpResponse.statusCode)
+            }
+        } catch {
+            if error is EPGServiceError { throw error }
+            guard let cachedData else { throw error }
+            let detail = try SportsEventDetailDecoder.decode(cachedData, identity: identity)
+            sportsDetailMemoryCache[identity.cacheKey] = detail
+            return detail
         }
     }
 
@@ -248,6 +318,16 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding {
         sportsLastAttempt = now
         defaults.set(now, forKey: Self.sportsLastAttemptKey)
     }
+
+    private func sportsDetailCacheURL(identity: SportsEventDetailIdentity) -> URL {
+        cacheDirectory.appending(
+            path: "seasonstv-sports-detail-\(identity.sport)-\(identity.league)-\(identity.eventID).json"
+        )
+    }
+
+    private func sportsDetailETagKey(identity: SportsEventDetailIdentity) -> String {
+        "sports.detail.\(identity.sport).\(identity.league).\(identity.eventID).etag"
+    }
 }
 
 enum SportsScheduleDecoder {
@@ -271,6 +351,40 @@ enum SportsScheduleDecoder {
             )
         }
         return try decoder.decode(SportsScheduleSnapshot.self, from: data)
+    }
+}
+
+enum SportsEventDetailDecoder {
+    static func decode(
+        _ data: Data,
+        identity: SportsEventDetailIdentity
+    ) throws -> SportsEventDetail {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let standardFormatter = ISO8601DateFormatter()
+        standardFormatter.formatOptions = [.withInternetDateTime]
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = fractionalFormatter.date(from: value)
+                ?? standardFormatter.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Expected an ISO-8601 timestamp, with optional fractional seconds."
+            )
+        }
+        let detail = try decoder.decode(SportsEventDetail.self, from: data)
+        guard detail.provider == "ESPN",
+              detail.eventID == identity.eventID,
+              detail.sport == identity.sport,
+              detail.league == identity.league else {
+            throw EPGServiceError.invalidSportsEventDetail
+        }
+        return detail
     }
 }
 

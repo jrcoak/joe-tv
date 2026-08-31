@@ -21,7 +21,7 @@ struct RootView: View {
             }
         }
         .alert(
-            "SeasonsTV",
+            "JOE-TV",
             isPresented: Binding(
                 get: { model.errorMessage != nil },
                 set: { if !$0 { model.errorMessage = nil } }
@@ -61,10 +61,10 @@ private struct LoginView: View {
         HStack(spacing: 88) {
             VStack(alignment: .leading, spacing: 20) {
                 BrandMark(size: 116)
-                Text("SEASONSTV")
+                Text("JOE-TV")
                     .font(.headline.monospaced().weight(.semibold))
                     .tracking(4)
-                    .foregroundStyle(SeasonTheme.accent)
+                    .foregroundStyle(SeasonTheme.liveSignal)
                 Text("Live television,\nmade for your TV.")
                     .font(.system(size: 58, weight: .semibold))
                     .lineSpacing(-4)
@@ -78,7 +78,7 @@ private struct LoginView: View {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Sign in")
                     .font(.system(size: 44, weight: .semibold))
-                Text("Your password is used only to sign in and is never stored by SeasonsTV.")
+                Text("Your password is used only to sign in and is never stored by JOE-TV.")
                     .font(.body)
                     .foregroundStyle(.secondary)
 
@@ -149,6 +149,7 @@ private struct CatalogView: View {
     @State private var confirmsSignOut = false
     @State private var showsSportsCategorySettings = false
     @State private var showsChannelSettings = false
+    @State private var homeEntryFocusRequest = 0
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
     @FocusState private var focusedDestination: AppModel.Destination?
@@ -162,13 +163,18 @@ private struct CatalogView: View {
 
                 Group {
                     switch model.destination {
+                    case .home:
+                        JoeTVHomeView(
+                            entryFocusRequest: homeEntryFocusRequest,
+                            onFocusNavigation: focusCurrentDestination
+                        )
                     case .liveTV:
-                        LiveTVBrowseView(
+                        JoeTVGuideView(
                             entryFocusRequest: liveTVEntryFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
                     case .sports:
-                        SportsView(
+                        JoeTVSportsView(
                             entryFocusRequest: sportsEntryFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
@@ -182,7 +188,7 @@ private struct CatalogView: View {
             .clipped()
         }
         .confirmationDialog(
-            "Sign out of SeasonsTV?",
+            "Sign out of JOE-TV?",
             isPresented: $confirmsSignOut,
             titleVisibility: .visible
         ) {
@@ -203,14 +209,15 @@ private struct CatalogView: View {
         HStack(spacing: 18) {
             BrandMark(size: 44)
                 .accessibilityHidden(true)
-            Text("SEASONSTV")
+            Text("JOE-TV")
                 .font(.subheadline.monospaced().weight(.bold))
                 .tracking(2.4)
 
             HStack(spacing: 8) {
+                destinationButton("Home", symbol: "house.fill", destination: .home)
                 destinationButton("Live TV", symbol: "rectangle.grid.1x2.fill", destination: .liveTV)
                 if !model.isVeryLocalOnly {
-                    destinationButton("Sports & Events", symbol: "sportscourt.fill", destination: .sports)
+                    destinationButton("Sports", symbol: "sportscourt.fill", destination: .sports)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -286,6 +293,8 @@ private struct CatalogView: View {
         .onMoveCommand { direction in
             if direction == .down {
                 switch destination {
+                case .home:
+                    homeEntryFocusRequest += 1
                 case .liveTV:
                     liveTVEntryFocusRequest += 1
                 case .sports:
@@ -411,7 +420,7 @@ private struct SportsCategorySettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Sports categories")
                         .font(.system(size: 42, weight: .semibold))
-                    Text("Choose which sections appear in Sports & Events.")
+                    Text("Choose which sections appear in Sports.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
