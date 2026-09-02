@@ -3,9 +3,13 @@ import SwiftUI
 
 struct PlayerScreen: View {
     @ObservedObject var session: PlaybackSession
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @FocusState private var failureActionFocused: Bool
+    @FocusState private var playerFocused: Bool
     @State private var chromeVisible = true
+    @State private var channelChangeLabel: String?
+    @State private var channelChangeTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -83,6 +87,20 @@ struct PlayerScreen: View {
                 .accessibilityElement(children: .combine)
             }
 
+            if let channelChangeLabel {
+                HStack(spacing: 14) {
+                    ProgressView()
+                    Text(channelChangeLabel)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(SeasonTheme.paper)
+                .padding(.horizontal, 22)
+                .frame(height: 58)
+                .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 9))
+                .overlay { RoundedRectangle(cornerRadius: 9).stroke(SeasonTheme.keyline) }
+                .transition(.opacity)
+            }
+
             if let playbackError = session.playbackError {
                 VStack(spacing: 18) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -109,16 +127,22 @@ struct PlayerScreen: View {
             }
 
         }
+        .focusable(session.playbackError == nil)
+        .focused($playerFocused)
         .onAppear {
             session.player.play()
             failureActionFocused = session.playbackError != nil
+            playerFocused = session.playbackError == nil
             chromeVisible = true
             Task {
                 try? await Task.sleep(for: .seconds(4))
                 withAnimation(.easeOut(duration: 0.3)) { chromeVisible = false }
             }
         }
-        .onDisappear { session.player.pause() }
+        .onDisappear {
+            channelChangeTask?.cancel()
+            session.player.pause()
+        }
         .onChange(of: session.playbackError) { _, error in
             failureActionFocused = error != nil
         }
@@ -126,5 +150,28 @@ struct PlayerScreen: View {
             session.player.pause()
             dismiss()
         }
+        .onKeyPress(.upArrow, phases: .down) { _ in
+            requestChannelChange(by: 1)
+        }
+        .onKeyPress(.downArrow, phases: .down) { _ in
+            requestChannelChange(by: -1)
+        }
+    }
+
+    private func requestChannelChange(by offset: Int) -> KeyPress.Result {
+        guard model.activeLiveChannelID != nil, !model.isWorking else { return .ignored }
+        channelChangeTask?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) {
+            channelChangeLabel = offset > 0 ? "Channel up" : "Channel down"
+            chromeVisible = true
+        }
+        channelChangeTask = Task { @MainActor in
+            await model.changeLiveChannel(by: offset)
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(for: .seconds(1.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { channelChangeLabel = nil }
+        }
+        return .handled
     }
 }

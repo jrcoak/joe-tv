@@ -51,6 +51,33 @@ enum ParserSmoke {
             fatalError("The priority Very Local stations are not using bundled high-resolution logos")
         }
 
+        let pbsChannels = PBSLiveClient.channels
+        guard pbsChannels.map(\.id) == ["nhpbs:main", "nhpbs:explore", "nhpbs:world", "nhpbs:kids"],
+              pbsChannels.allSatisfy({ ChannelDirectory.section(for: $0) == .local }),
+              pbsChannels.allSatisfy({ channel in
+                  if case .pbs = channel.playback { return true }
+                  return false
+              }),
+              PBSLiveClient.drmConfiguration(
+                for: {
+                    guard case .pbs(let reference) = pbsChannels[0].playback else {
+                        fatalError("NHPBS main did not retain its PBS playback reference")
+                    }
+                    return reference
+                }()
+              )?.licenseURL?.host == "proxy.drm.pbs.org" else {
+            fatalError("The official NHPBS channel directory or FairPlay configuration is incomplete")
+        }
+
+        let sectionFixture = ChannelDirectory.sorted([
+            pbsChannels[0],
+            veryLocalChannels.first(where: { $0.id == "verylocal:koat" })!,
+            veryLocalChannels.first(where: { $0.id == "verylocal:wcvb" })!
+        ])
+        guard sectionFixture.map(\.id) == ["nhpbs:main", "verylocal:wcvb", "verylocal:koat"] else {
+            fatalError("Channel section ordering or alphabetical sorting is incorrect")
+        }
+
         let mediaReadToken = String(repeating: "a", count: 32)
         guard let mediaConfiguration = try? MediaAPIConfiguration.values(
             baseURLValue: "https://personal-media-api.example",
@@ -1012,8 +1039,55 @@ enum ParserSmoke {
         guard ChannelDirectory.channels.count == 66,
               Set(ChannelDirectory.channels.map(\.playbackIdentity)).count == 66,
               ChannelDirectory.channels.allSatisfy({ Int($0.stationID) != nil }),
-              ChannelDirectory.channels.first(where: { $0.displayName == "CBS 60fps · New York" })?.stationID == "16689" else {
+              ChannelDirectory.channels.first(where: { $0.displayName == "CBS 60fps - New York" })?.stationID == "16689" else {
             fatalError("The curated 66-channel playback/XMLTV mapping is incomplete")
+        }
+
+        let expectedCoreSections: [LiveChannelSection: Set<String>] = [
+            .local: [
+                "ABC - New York", "CBS - New York", "CBS 60fps - New York", "FOX - New York",
+                "NBC - Boston", "NBC - Los Angeles", "NBC - New York", "PBS - State College",
+                "The Weather Channel"
+            ],
+            .entertainment: [
+                "AMC", "AXS TV", "BBC America", "Bravo", "Cartoon Network", "Comedy Central",
+                "Discovery Channel", "E!", "Food Network", "Freeform", "FX", "Hallmark", "HGTV",
+                "Investigation Discovery", "Lifetime", "Lifetime Movie Network", "MTV", "Oxygen",
+                "Paramount Network", "REELZ", "Showtime", "Syfy", "TBS", "TCM", "TLC", "TNT",
+                "truTV", "USA"
+            ],
+            .news: [
+                "BBC World News", "Bloomberg", "CNBC", "CNN", "Fox Business", "Fox News",
+                "Fox Weather", "MSNBC"
+            ],
+            .sports: [
+                "ACC Network", "BTN", "CBS Sports Network", "ESPN", "ESPN News", "ESPN2", "ESPNU",
+                "FS1", "Fox Soccer Plus", "Golf Channel", "MLB Network", "MLB Strike Zone", "NBA TV",
+                "NFL Network", "NFL RedZone", "NHL Network", "SEC Network", "Tennis Channel", "Willow Extra"
+            ]
+        ]
+        for (section, names) in expectedCoreSections {
+            let classifiedNames = Set(ChannelDirectory.channels.compactMap { definition -> String? in
+                let channel = LiveChannel(
+                    id: definition.playbackIdentity,
+                    name: definition.displayName,
+                    logoURL: nil,
+                    playback: .drmPage(baseURL),
+                    genre: ChannelDirectory.genre(for: definition.displayName)
+                )
+                return ChannelDirectory.section(for: channel) == section ? channel.name : nil
+            })
+            guard names.isSubset(of: classifiedNames) else {
+                fatalError("The requested \(section.rawValue) channel section is incomplete")
+            }
+        }
+        guard veryLocalChannels.allSatisfy({ channel in
+            let expected: LiveChannelSection = ["verylocal:wcvb", "verylocal:wmur"].contains(channel.id)
+                ? .local
+                : .news
+            return ChannelDirectory.section(for: channel) == expected
+        }) else {
+            fatalError("Very Local stations are not assigned to Local/News as requested")
         }
 
         let xmltv = Data(#"""

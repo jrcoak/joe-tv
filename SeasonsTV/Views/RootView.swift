@@ -387,12 +387,13 @@ private struct ChannelSettingsView: View {
     }
 
     private var sections: [ProviderSection] {
-        let seasons = model.availableLiveChannels.filter { !$0.id.hasPrefix("verylocal:") }
-        let veryLocal = model.availableLiveChannels.filter { $0.id.hasPrefix("verylocal:") }
-        return [
-            ProviderSection(id: "seasons4u", title: "Seasons4U", channels: seasons),
-            ProviderSection(id: "verylocal", title: "Very Local", channels: veryLocal)
-        ].filter { !$0.channels.isEmpty }
+        LiveChannelSection.allCases.compactMap { section in
+            let channels = model.availableLiveChannels.filter {
+                ChannelDirectory.section(for: $0) == section
+            }
+            guard !channels.isEmpty else { return nil }
+            return ProviderSection(id: section.id, title: section.rawValue, channels: channels)
+        }
     }
 
     private var enabledCount: Int {

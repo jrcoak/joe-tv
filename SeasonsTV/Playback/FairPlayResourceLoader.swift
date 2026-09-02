@@ -60,10 +60,16 @@ final class FairPlayResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
             options: nil
         )
 
-        let httpsLicense = skdURL.absoluteString.replacingOccurrences(of: "skd://", with: "https://")
-        let licenseString = (configuration.licenseProxyPrefix ?? "") + httpsLicense
-        guard let licenseURL = URL(string: licenseString) else {
-            throw SeasonsError.fairPlayUnavailable
+        let licenseURL: URL
+        if let configuredLicenseURL = configuration.licenseURL {
+            licenseURL = configuredLicenseURL
+        } else {
+            let httpsLicense = skdURL.absoluteString.replacingOccurrences(of: "skd://", with: "https://")
+            let licenseString = (configuration.licenseProxyPrefix ?? "") + httpsLicense
+            guard let derivedLicenseURL = URL(string: licenseString) else {
+                throw SeasonsError.fairPlayUnavailable
+            }
+            licenseURL = derivedLicenseURL
         }
 
         var licenseRequest = URLRequest(url: licenseURL)

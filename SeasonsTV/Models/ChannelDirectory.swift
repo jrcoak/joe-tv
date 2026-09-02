@@ -7,9 +7,27 @@ struct CuratedChannelDefinition: Equatable {
     let callSign: String
 }
 
+enum LiveChannelSection: String, CaseIterable, Identifiable {
+    case local = "Local"
+    case entertainment = "Entertainment"
+    case news = "News"
+    case sports = "Sports"
+
+    var id: String { rawValue }
+
+    fileprivate var sortOrder: Int {
+        switch self {
+        case .local: return 0
+        case .entertainment: return 1
+        case .news: return 2
+        case .sports: return 3
+        }
+    }
+}
+
 enum ChannelDirectory {
     static let channels: [CuratedChannelDefinition] = [
-        .init(displayName: "ABC · New York", playbackIdentity: "f94a1f7b-9cc9-4d60-abcb-1b83e4e0d163", stationID: "20453", callSign: "WABCDT"),
+        .init(displayName: "ABC - New York", playbackIdentity: "f94a1f7b-9cc9-4d60-abcb-1b83e4e0d163", stationID: "20453", callSign: "WABCDT"),
         .init(displayName: "ACC Network", playbackIdentity: "736220c2-0584-49f2-8301-dafc41b60c50", stationID: "111871", callSign: "ACC"),
         .init(displayName: "AMC", playbackIdentity: "63a1d590-ba28-45be-9ac3-d4f3a96f285d", stationID: "59337", callSign: "AMCHD"),
         .init(displayName: "AXS TV", playbackIdentity: "9fe38ff1-a391-437d-8929-e7901357579b", stationID: "28506", callSign: "AXSTV"),
@@ -29,7 +47,7 @@ enum ChannelDirectory {
         .init(displayName: "ESPN2", playbackIdentity: "e5f0e8cc-12da-48a9-aa98-ebd7a8a7e477", stationID: "45507", callSign: "ESPN2HD"),
         .init(displayName: "ESPNU", playbackIdentity: "eefc0d5d-25d5-4422-b545-b7c31e7ce9bf", stationID: "60696", callSign: "ESPNUHD"),
         .init(displayName: "Food Network", playbackIdentity: "db5c3856-12a4-4978-9788-1c794be5fd87", stationID: "50747", callSign: "FOODHD"),
-        .init(displayName: "FOX · New York", playbackIdentity: "afd29b14-3269-4bac-bef9-f5315df86e8d", stationID: "20360", callSign: "WNYWDT"),
+        .init(displayName: "FOX - New York", playbackIdentity: "afd29b14-3269-4bac-bef9-f5315df86e8d", stationID: "20360", callSign: "WNYWDT"),
         .init(displayName: "Fox Business", playbackIdentity: "11885abc-cf83-4c42-9362-aa95fee1a1a1", stationID: "58718", callSign: "FBNHD"),
         .init(displayName: "Fox News", playbackIdentity: "eba5c11a-7a50-415a-bbd6-3ddb8f328e8f", stationID: "60179", callSign: "FNCHD"),
         .init(displayName: "Freeform", playbackIdentity: "202d30c6-76b7-4581-b078-9b6f49b9deb6", stationID: "10093", callSign: "FREEFRM"),
@@ -46,9 +64,9 @@ enum ChannelDirectory {
         .init(displayName: "MSNBC", playbackIdentity: "009f9cd8-3a7a-487c-b9c1-f13b8d3adc3c", stationID: "64241", callSign: "MSNOWHD"),
         .init(displayName: "MTV", playbackIdentity: "90544673-e787-4078-b482-46897553e254", stationID: "60964", callSign: "MTVHD"),
         .init(displayName: "NBA TV", playbackIdentity: "846a3549-4d83-4b35-b399-759e72f5dff2", stationID: "45526", callSign: "NBATVHD"),
-        .init(displayName: "NBC · Los Angeles", playbackIdentity: "15530ed4-5f86-4eec-842c-3b48e1f10195", stationID: "19568", callSign: "KNBCDT"),
-        .init(displayName: "NBC · Boston", playbackIdentity: "155765d4-5f86-4eec-842c-3b48e1f10195", stationID: "91446", callSign: "WBTSCD"),
-        .init(displayName: "NBC · New York", playbackIdentity: "6321f4e7-7529-46af-ab0c-1b151c2fe61d", stationID: "20459", callSign: "WNBCDT"),
+        .init(displayName: "NBC - Los Angeles", playbackIdentity: "15530ed4-5f86-4eec-842c-3b48e1f10195", stationID: "19568", callSign: "KNBCDT"),
+        .init(displayName: "NBC - Boston", playbackIdentity: "155765d4-5f86-4eec-842c-3b48e1f10195", stationID: "91446", callSign: "WBTSCD"),
+        .init(displayName: "NBC - New York", playbackIdentity: "6321f4e7-7529-46af-ab0c-1b151c2fe61d", stationID: "20459", callSign: "WNBCDT"),
         .init(displayName: "NFL Network", playbackIdentity: "029726c2-a92a-447d-a256-964259ce95ca", stationID: "45399", callSign: "NFLHD"),
         .init(displayName: "NHL Network", playbackIdentity: "e01bb24e-a2ff-4f42-afdf-807fcb52343d", stationID: "58690", callSign: "NHLHD"),
         .init(displayName: "Oxygen", playbackIdentity: "17359ab9-e4c5-4516-8743-8d6789ed665f", stationID: "70522", callSign: "OXYGNHD"),
@@ -68,10 +86,10 @@ enum ChannelDirectory {
         .init(displayName: "USA", playbackIdentity: "67ed0315-e3d4-4f8f-bbc5-442d4a2305cc", stationID: "58452", callSign: "USAHD"),
         .init(displayName: "Willow Extra", playbackIdentity: "8b47644d-0ba3-4d36-a501-b2959ae9dd7d", stationID: "100316", callSign: "WILLOW2"),
         .init(displayName: "Fox Soccer Plus", playbackIdentity: "legacy:bkb:channel:605", stationID: "66879", callSign: "FSP"),
-        .init(displayName: "CBS · New York", playbackIdentity: "legacy:bkb:channel:5012", stationID: "16689", callSign: "WCBSDT"),
-        .init(displayName: "CBS 60fps · New York", playbackIdentity: "legacy:bkb:channel:802", stationID: "16689", callSign: "WCBSDT"),
+        .init(displayName: "CBS - New York", playbackIdentity: "legacy:bkb:channel:5012", stationID: "16689", callSign: "WCBSDT"),
+        .init(displayName: "CBS 60fps - New York", playbackIdentity: "legacy:bkb:channel:802", stationID: "16689", callSign: "WCBSDT"),
         .init(displayName: "CBS Sports Network", playbackIdentity: "legacy:bkb:channel:804", stationID: "59250", callSign: "CBSSNHD"),
-        .init(displayName: "PBS · State College", playbackIdentity: "legacy:bkb:channel:5037", stationID: "45799", callSign: "WPSUDT"),
+        .init(displayName: "PBS - State College", playbackIdentity: "legacy:bkb:channel:5037", stationID: "45799", callSign: "WPSUDT"),
         .init(displayName: "Fox Deportes", playbackIdentity: "legacy:bkb:channel:604", stationID: "72189", callSign: "FXDEPHD"),
         .init(displayName: "Fox Weather", playbackIdentity: "legacy:hky:live:-13031", stationID: "93141", callSign: "FOXWX"),
         .init(displayName: "The Weather Channel", playbackIdentity: "legacy:hky:live:-13032", stationID: "58812", callSign: "WEATHHD")
@@ -80,6 +98,24 @@ enum ChannelDirectory {
     private static let byPlaybackIdentity = Dictionary(
         uniqueKeysWithValues: channels.map { ($0.playbackIdentity, $0) }
     )
+
+    private static let localChannelIDs: Set<String> = [
+        "verylocal:wcvb",
+        "verylocal:wmur",
+        "f94a1f7b-9cc9-4d60-abcb-1b83e4e0d163", // ABC - New York
+        "afd29b14-3269-4bac-bef9-f5315df86e8d", // FOX - New York
+        "15530ed4-5f86-4eec-842c-3b48e1f10195", // NBC - Los Angeles
+        "155765d4-5f86-4eec-842c-3b48e1f10195", // NBC - Boston
+        "6321f4e7-7529-46af-ab0c-1b151c2fe61d", // NBC - New York
+        "legacy:bkb:channel:5012", // CBS - New York
+        "legacy:bkb:channel:802", // CBS 60fps - New York
+        "legacy:bkb:channel:5037", // PBS - State College
+        "legacy:hky:live:-13032", // The Weather Channel
+        "nhpbs:main",
+        "nhpbs:explore",
+        "nhpbs:world",
+        "nhpbs:kids"
+    ]
 
     static func definition(forPlaybackIdentity identity: String) -> CuratedChannelDefinition? {
         byPlaybackIdentity[identity]
@@ -93,6 +129,27 @@ enum ChannelDirectory {
         }
         guard let definition = byPlaybackIdentity[identity] else { return nil }
         return "ChannelLogo_\(definition.stationID)"
+    }
+
+    static func section(for channel: LiveChannel) -> LiveChannelSection {
+        if localChannelIDs.contains(channel.id) { return .local }
+        if channel.id.hasPrefix("verylocal:") { return .news }
+        if channel.genre == .sports || channel.name.localizedCaseInsensitiveContains("Deportes") {
+            return .sports
+        }
+        if channel.genre == .news { return .news }
+        return .entertainment
+    }
+
+    static func sorted(_ channels: [LiveChannel]) -> [LiveChannel] {
+        channels.sorted { lhs, rhs in
+            let lhsSection = section(for: lhs)
+            let rhsSection = section(for: rhs)
+            if lhsSection.sortOrder != rhsSection.sortOrder {
+                return lhsSection.sortOrder < rhsSection.sortOrder
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
     }
 
     static func curate(_ discovered: [LiveChannel]) -> [LiveChannel] {

@@ -445,6 +445,7 @@ struct LiveChannel: Identifiable {
         case drmPage(URL)
         case request(PlaybackRequest)
         case veryLocal(VeryLocalPlaybackReference)
+        case pbs(PBSLivePlaybackReference)
     }
 
     let id: String
@@ -553,6 +554,21 @@ struct DRMConfiguration {
     let certificateURL: URL
     let licenseProxyPrefix: String?
     let headers: [String: String]
+    let licenseURL: URL?
+
+    init(
+        hlsURL: URL,
+        certificateURL: URL,
+        licenseProxyPrefix: String?,
+        headers: [String: String],
+        licenseURL: URL? = nil
+    ) {
+        self.hlsURL = hlsURL
+        self.certificateURL = certificateURL
+        self.licenseProxyPrefix = licenseProxyPrefix
+        self.headers = headers
+        self.licenseURL = licenseURL
+    }
 }
 
 @MainActor

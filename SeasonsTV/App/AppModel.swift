@@ -46,6 +46,7 @@ final class AppModel: ObservableObject {
     @Published var workingMessage = "Loading…"
     @Published var errorMessage: String?
     @Published var playbackSession: PlaybackSession?
+    @Published private(set) var activeLiveChannelID: String?
 
     let client: SeasonsClient
     let veryLocalClient: VeryLocalClient
@@ -288,6 +289,7 @@ final class AppModel: ObservableObject {
         async let channelResult = capture { try await self.client.loadLiveChannels() }
         let (events, channels) = await (catalogResult, channelResult)
         let veryLocalChannels = veryLocalClient.loadChannels()
+        let publicChannels = veryLocalChannels + PBSLiveClient.channels
         veryLocalState = veryLocalChannels.isEmpty ? .failed("Very Local did not publish any stations.") : .loaded
 
         if case .failure(let error) = events, isAuthenticationError(error) {
@@ -311,12 +313,12 @@ final class AppModel: ObservableObject {
 
         switch channels {
         case .success(let loadedChannels):
-            replaceAvailableChannels(with: loadedChannels + veryLocalChannels)
+            replaceAvailableChannels(with: loadedChannels + publicChannels)
             channelState = .loaded
             Task { await refreshEPG(for: liveChannels, around: Date()) }
         case .failure(let error):
-            replaceAvailableChannels(with: veryLocalChannels)
-            if veryLocalChannels.isEmpty {
+            replaceAvailableChannels(with: publicChannels)
+            if publicChannels.isEmpty {
                 channelState = .failed(error.localizedDescription)
             } else {
                 channelState = .loaded
@@ -626,6 +628,7 @@ final class AppModel: ObservableObject {
         defer { isWorking = false }
 
         do {
+            activeLiveChannelID = nil
             switch option?.playback ?? item.playback {
             case .hls(let url):
                 playbackSession = PlaybackSession(title: item.title, url: url)
@@ -652,21 +655,47 @@ final class AppModel: ObservableObject {
         defer { isWorking = false }
 
         do {
-            switch channel.playback {
-            case .drmPage(let pageURL):
-                playbackSession = try await makeDRMPlaybackSession(title: channel.name, pageURL: pageURL)
-            case .request(let request):
-                let url = try await client.resolveStream(request)
-                playbackSession = PlaybackSession(title: channel.name, url: url)
-            case .veryLocal(let reference):
-                let url = try await veryLocalClient.resolveStream(reference)
-                playbackSession = PlaybackSession(title: channel.name, url: url)
-            }
+            let session = try await makePreviewSession(for: channel)
+            playbackSession?.player.pause()
+            activeLiveChannelID = channel.id
+            playbackSession = session
         } catch SeasonsError.authenticationRequired {
             screen = .signedOut
             errorMessage = "Your session expired. Sign in again."
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func changeLiveChannel(by offset: Int) async {
+        guard offset != 0,
+              !isWorking,
+              let activeLiveChannelID,
+              let currentIndex = liveChannels.firstIndex(where: { $0.id == activeLiveChannelID }),
+              !liveChannels.isEmpty else { return }
+        let targetIndex = (currentIndex + offset + liveChannels.count) % liveChannels.count
+        await play(liveChannels[targetIndex])
+    }
+
+    func makePreviewSession(for channel: LiveChannel) async throws -> PlaybackSession {
+        switch channel.playback {
+        case .drmPage(let pageURL):
+            return try await makeDRMPlaybackSession(title: channel.name, pageURL: pageURL)
+        case .request(let request):
+            let url = try await client.resolveStream(request)
+            return PlaybackSession(title: channel.name, url: url)
+        case .veryLocal(let reference):
+            let url = try await veryLocalClient.resolveStream(reference)
+            return PlaybackSession(title: channel.name, url: url)
+        case .pbs(let reference):
+            if let configuration = PBSLiveClient.drmConfiguration(for: reference) {
+                #if targetEnvironment(simulator)
+                throw SeasonsError.fairPlayRequiresDevice
+                #else
+                return PlaybackSession(title: channel.name, configuration: configuration, client: client)
+                #endif
+            }
+            return PlaybackSession(title: channel.name, url: reference.streamURL)
         }
     }
 
@@ -684,6 +713,7 @@ final class AppModel: ObservableObject {
         sportsDetailFocusTask?.cancel()
         playbackSession?.player.pause()
         playbackSession = nil
+        activeLiveChannelID = nil
         client.clearLocalSession()
         categories = []
         playbackCategories = []
@@ -717,6 +747,7 @@ final class AppModel: ObservableObject {
     func openVeryLocal() {
         playbackSession?.player.pause()
         playbackSession = nil
+        activeLiveChannelID = nil
         errorMessage = nil
         isVeryLocalOnly = true
         destination = .home
@@ -740,7 +771,8 @@ final class AppModel: ObservableObject {
     }
 
     private func replaceAvailableChannels(with channels: [LiveChannel]) {
-        availableLiveChannels = channels
+        let unique = Dictionary(channels.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        availableLiveChannels = ChannelDirectory.sorted(Array(unique.values))
         applyChannelPreferences()
         adoptInitialFavoriteChannelsIfNeeded()
     }

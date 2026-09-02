@@ -23,6 +23,7 @@
 		AA0000000000000000000012 /* VeryLocalClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* VeryLocalClient.swift */; };
 		AA0000000000000000000013 /* JoeTVExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* JoeTVExperience.swift */; };
 		AA0000000000000000000014 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000018 /* PrivacyInfo.xcprivacy */; };
+		AA0000000000000000000015 /* PBSLiveClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000019 /* PBSLiveClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 		BB0000000000000000000016 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		BB0000000000000000000017 /* Internal.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Internal.example.xcconfig; sourceTree = "<group>"; };
 		BB0000000000000000000018 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BB0000000000000000000019 /* PBSLiveClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PBSLiveClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +115,7 @@
 				BB0000000000000000000010 /* MediaAPIConfiguration.swift */,
 				BB000000000000000000000F /* XMLTVGuideProvider.swift */,
 				BB0000000000000000000013 /* VeryLocalClient.swift */,
+				BB0000000000000000000019 /* PBSLiveClient.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -273,6 +276,7 @@
 				AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */,
 				AA0000000000000000000012 /* VeryLocalClient.swift in Sources */,
 				AA0000000000000000000013 /* JoeTVExperience.swift in Sources */,
+				AA0000000000000000000015 /* PBSLiveClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

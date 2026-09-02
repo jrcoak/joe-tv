@@ -110,12 +110,12 @@ Guide and sports metadata require private build configuration:
 
 `Config/Shared.xcconfig` supplies the non-secret base URL and optionally includes the private file. `Info.plist` exposes the expanded values to the app as `MediaAPIBaseURL` and `MediaReadToken`. Debug builds without a token remain usable for playback and show a clear schedule-configuration error. Release builds run `scripts/validate-media-read-token.sh` and fail when the token is missing, shorter than 32 characters, or a placeholder.
 
-Generic device compilation without signing (verified successfully on August 12, 2026):
+Generic device compilation without signing (verified successfully on September 1, 2026):
 
 ```sh
 xcodebuild \
-  -project SeasonsTV.xcodeproj \
-  -scheme SeasonsTV \
+  -project Joe-TV.xcodeproj \
+  -scheme Joe-TV \
   -sdk appletvos \
   -destination 'generic/platform=tvOS' \
   -derivedDataPath .build/DerivedData \
@@ -434,7 +434,10 @@ Important decisions:
 - **Live TV is the default surface** because channel playback became the immediate priority.
 - **Rows, not tiny inline controls, are focusable.** Each channel/event row is one large Siri Remote target; focus updates a spatially stable contextual stage.
 - **EPG is production-backed but playback-neutral.** Browse cards automatically show now-playing titles when present, Up Next appears only with useful schedule data, and playback never depends on EPG availability.
-- **Live TV is one surface.** Search sits above genre-grouped channels. Right from a channel enters its Up Next disclosure; Select toggles the next five programs; Left returns to the channel; Back closes the disclosure before returning to global navigation. There is no Browse/Guide subnavigation or full-grid guide.
+- **The Live TV guide uses explicit sections.** All, Favorites, Local, Entertainment, News, and Sports filters sit above an absolute-time grid. First-row Up and Back from the grid return to those filters; Back from a filter returns to global navigation. Holding Up or Down advances six channels at a time. The selected channel receives one debounced, muted preview session and the prior preview is stopped before another is resolved.
+- **Channel ordering is centralized.** `ChannelDirectory` assigns Local, Entertainment, News, and Sports sections, then alphabetizes within each section. Favorites remains a dynamic user selection rather than a duplicated provider lineup.
+- **Player channel clicks are explicit.** Directional-ring Up/Down key presses wrap through enabled channels. Stream identities are resolved again and the previous player is paused before the new session is installed.
+- **NHPBS is an independent public source.** NHPBS, NHPBS Explore, NHPBS World, and PBS Kids appear in Local. The two FairPlay variants use PBS's fixed certificate/license endpoints and require a physical Apple TV; the non-DRM variants use their official redirecting HLS endpoints.
 - **Curated channel branding is authoritative in Live TV.** The 66-channel directory resolves to 65 unique 512×384 asset-catalog images (the two CBS New York feeds share one station asset). Browse rows and the Live TV stage use those assets immediately and offline. XMLTV program icons are not promoted into the stage because upstream images can be generic or incorrectly associated with another network.
 - **The logo library is reproducible.** `scripts/import-channel-logos.sh /path/to/xmltv.xml` reads numeric station IDs from `ChannelDirectory.swift`, resolves each XMLTV `<channel><icon>`, requests the existing TMS source at 512 pixels, validates the result, and regenerates the matching image sets. Confirm provider/TMS redistribution rights before public distribution.
 - **Blocking loading is limited.** Sign-in and playback preparation use a task-specific overlay. Refresh preserves interaction and reports source-specific failures inline.
@@ -482,6 +485,8 @@ AVPlayer failures are separate because they occur after the network orchestratio
 - FPS HLS/certificate/header/international-proxy parsing.
 - the fixed 29-channel Very Local station directory, namespaced playback identities, and public-playback model cases.
 - priority WMUR/WCVB local-brand routing, independent of Very Local's lower-resolution remote artwork.
+- the four official NHPBS identities and direct-license FairPlay configuration.
+- the requested channel-section membership, Very Local Local/News split, and section/alphabetical ordering.
 
 It does not make live network requests and does not test form login, cookie persistence, session expiry, or real media playback.
 
@@ -500,6 +505,7 @@ swiftc \
   SeasonsTV/Networking/SeasonsClient.swift \
   SeasonsTV/Networking/XMLTVGuideProvider.swift \
   SeasonsTV/Networking/VeryLocalClient.swift \
+  SeasonsTV/Networking/PBSLiveClient.swift \
   SeasonsTV/Playback/FairPlayResourceLoader.swift \
   Tests/ParserSmoke.swift \
   -o .build/parser-smoke

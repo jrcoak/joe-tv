@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 // MARK: - Home
@@ -266,15 +267,21 @@ struct JoeTVGuideView: View {
     @State private var selectedChannelID: String?
     @State private var selectedProgramID: String?
     @State private var programActions: JoeTVProgramSelection?
+    @State private var previewSession: PlaybackSession?
+    @State private var previewChannelID: String?
+    @State private var previewState: JoeTVPreviewState = .artwork
+    @State private var previewTask: Task<Void, Never>?
     @FocusState private var focusedID: String?
     let entryFocusRequest: Int
     let onFocusNavigation: () -> Void
 
     private enum GuideFilter: String, CaseIterable, Identifiable {
         case all = "All"
-        case sports = "Sports"
-        case news = "News"
+        case favorites = "Favorites"
         case local = "Local"
+        case entertainment = "Entertainment"
+        case news = "News"
+        case sports = "Sports"
         var id: String { rawValue }
     }
 
@@ -284,9 +291,11 @@ struct JoeTVGuideView: View {
         model.liveChannels.filter { channel in
             switch filter {
             case .all: return true
-            case .sports: return channel.genre == .sports
-            case .news: return channel.genre == .news
-            case .local: return channel.id.hasPrefix("verylocal:")
+            case .favorites: return model.favoriteChannelIDs.contains(channel.id)
+            case .local: return ChannelDirectory.section(for: channel) == .local
+            case .entertainment: return ChannelDirectory.section(for: channel) == .entertainment
+            case .news: return ChannelDirectory.section(for: channel) == .news
+            case .sports: return ChannelDirectory.section(for: channel) == .sports
             }
         }
     }
@@ -321,7 +330,16 @@ struct JoeTVGuideView: View {
                         } label: {
                             Text(option.rawValue)
                         }
-                        .buttonStyle(FocusPillButtonStyle(isSelected: filter == option))
+                        .buttonStyle(JoeTVGuideFilterButtonStyle(isSelected: filter == option))
+                        .focused($focusedID, equals: filterFocusID(option))
+                        .onKeyPress(.upArrow) {
+                            onFocusNavigation()
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            focusGuideSelection()
+                            return .handled
+                        }
                     }
 
                     Spacer()
@@ -345,12 +363,14 @@ struct JoeTVGuideView: View {
                         mappings: model.channelStationMappings,
                         anchor: model.guideTimeAnchor,
                         focusedID: $focusedID,
+                        focusFilters: focusCurrentFilter,
                         selectionChanged: updateSelection,
                         programPressed: { channel, program in
                             updateSelection(channel, program)
                             programActions = JoeTVProgramSelection(channel: channel, program: program)
                         },
                         channelPressed: { channel in
+                            stopPreview()
                             Task { await model.play(channel) }
                         }
                     )
@@ -364,6 +384,7 @@ struct JoeTVGuideView: View {
         .sheet(item: $programActions) { selection in
             JoeTVProgramActionsView(selection: selection) {
                 programActions = nil
+                stopPreview()
                 Task { await model.play(selection.channel) }
             }
         }
@@ -375,7 +396,8 @@ struct JoeTVGuideView: View {
                 updateSelection(match.channel, match.program)
             }
         }
-        .onExitCommand { onFocusNavigation() }
+        .onDisappear { stopPreview() }
+        .onExitCommand { handleExit() }
     }
 
     private func selectionHeader(at date: Date) -> some View {
@@ -414,18 +436,16 @@ struct JoeTVGuideView: View {
                         .foregroundStyle(SeasonTheme.secondaryText)
                 }
 
-                if let channel = selectedChannel {
-                    Button { Task { await model.play(channel) } } label: {
-                        Label("Watch live", systemImage: "play.fill")
-                    }
-                    .buttonStyle(JoeTVCompactButtonStyle(isPrimary: true))
-                    .focused($focusedID, equals: "watch-live")
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            JoeTVProgramPreview(channel: selectedChannel, program: selectedProgram)
-                .frame(width: 380, height: 188)
+            JoeTVProgramPreview(
+                channel: selectedChannel,
+                program: selectedProgram,
+                session: previewSession,
+                state: previewState
+            )
+                .frame(width: 450, height: 218)
         }
     }
 
@@ -452,31 +472,95 @@ struct JoeTVGuideView: View {
     }
 
     private func updateSelection(_ channel: LiveChannel, _ program: EPGProgram?) {
+        let channelChanged = selectedChannelID != channel.id
         selectedChannelID = channel.id
         selectedProgramID = program?.id
         model.lastFocusedLiveID = program.map { "program:\($0.id)" } ?? "channel:\(channel.id)"
+        if channelChanged { schedulePreview(for: channel) }
     }
 
     private func resetSelection() {
         selectedChannelID = channels.first?.id
         selectedProgramID = nil
-        focusedID = nil
+        if let channel = channels.first { schedulePreview(for: channel) }
     }
 
     private func restoreFocus() {
         if let previous = model.lastFocusedLiveID,
            let match = guideSelection(for: previous) {
             updateSelection(match.channel, match.program)
-            DispatchQueue.main.async { focusedID = previous }
+            DispatchQueue.main.async { focusCurrentFilter() }
             return
         }
         resetSelection()
         if let channel = channels.first {
             let program = programs(for: channel).first(where: { $0.contains(Date()) }) ?? programs(for: channel).first
-            let identifier = program.map { "program:\($0.id)" } ?? "channel:\(channel.id)"
             updateSelection(channel, program)
-            DispatchQueue.main.async { focusedID = identifier }
+            DispatchQueue.main.async { focusCurrentFilter() }
         }
+    }
+
+    private func filterFocusID(_ filter: GuideFilter) -> String {
+        "guide-filter:\(filter.id)"
+    }
+
+    private func focusCurrentFilter() {
+        focusedID = filterFocusID(filter)
+    }
+
+    private func focusGuideSelection() {
+        guard let channel = selectedChannel ?? channels.first else { return }
+        let program = selectedProgram ?? programs(for: channel).first(where: { $0.contains(Date()) })
+        focusedID = program.map { "program:\($0.id)" } ?? "channel:\(channel.id)"
+    }
+
+    private func handleExit() {
+        guard let focusedID else {
+            focusCurrentFilter()
+            return
+        }
+        if focusedID.hasPrefix("channel:") || focusedID.hasPrefix("program:") {
+            focusCurrentFilter()
+        } else {
+            onFocusNavigation()
+        }
+    }
+
+    private func schedulePreview(for channel: LiveChannel) {
+        guard previewChannelID != channel.id else { return }
+        previewTask?.cancel()
+        previewChannelID = channel.id
+        previewState = .artwork
+        previewTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1_100))
+            guard !Task.isCancelled, previewChannelID == channel.id else { return }
+            previewSession?.player.pause()
+            previewSession = nil
+            previewState = .loading
+            do {
+                let session = try await model.makePreviewSession(for: channel)
+                guard !Task.isCancelled, previewChannelID == channel.id else {
+                    session.player.pause()
+                    return
+                }
+                session.player.isMuted = true
+                session.player.play()
+                previewSession = session
+                previewState = .playing
+            } catch {
+                guard !Task.isCancelled else { return }
+                previewState = .unavailable
+            }
+        }
+    }
+
+    private func stopPreview() {
+        previewTask?.cancel()
+        previewTask = nil
+        previewSession?.player.pause()
+        previewSession = nil
+        previewChannelID = nil
+        previewState = .artwork
     }
 
     private func guideSelection(for identifier: String) -> (channel: LiveChannel, program: EPGProgram?)? {
@@ -502,6 +586,7 @@ private struct JoeTVGuideGrid: View {
     let mappings: [String: String]
     let anchor: Date
     @FocusState.Binding var focusedID: String?
+    let focusFilters: () -> Void
     let selectionChanged: (LiveChannel, EPGProgram?) -> Void
     let programPressed: (LiveChannel, EPGProgram) -> Void
     let channelPressed: (LiveChannel) -> Void
@@ -522,8 +607,9 @@ private struct JoeTVGuideGrid: View {
     private var timelineWidth: CGFloat { CGFloat(windowEnd.timeIntervalSince(windowStart) / 60) * pointsPerMinute }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 0) {
+        ScrollViewReader { verticalProxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: 0) {
                     Text("CHANNELS")
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -531,7 +617,7 @@ private struct JoeTVGuideGrid: View {
                         .foregroundStyle(SeasonTheme.secondaryText)
                         .frame(width: channelWidth, height: rulerHeight, alignment: .leading)
 
-                    ForEach(channels) { channel in
+                    ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
                         Button { channelPressed(channel) } label: {
                             HStack(spacing: 12) {
                                 ArtworkView(
@@ -555,6 +641,12 @@ private struct JoeTVGuideGrid: View {
                         }
                         .buttonStyle(JoeTVGuideButtonStyle())
                         .focused($focusedID, equals: "channel:\(channel.id)")
+                        .id("guide-row:\(channel.id)")
+                        .onKeyPress(.upArrow) {
+                            guard index == 0 else { return .ignored }
+                            focusFilters()
+                            return .handled
+                        }
                         .onChange(of: focusedID) { _, newValue in
                             if newValue == "channel:\(channel.id)" { selectionChanged(channel, nil) }
                         }
@@ -564,19 +656,26 @@ private struct JoeTVGuideGrid: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         timeRuler
-                        ForEach(channels) { channel in
-                            programRow(channel)
+                        ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
+                            programRow(channel, isFirstRow: index == 0)
                         }
                     }
                     .overlay(alignment: .topLeading) {
                         nowLine
                     }
                 }
+                }
             }
+            .onKeyPress(.upArrow, phases: .repeat) { _ in
+                speedScroll(by: -6, proxy: verticalProxy)
+            }
+            .onKeyPress(.downArrow, phases: .repeat) { _ in
+                speedScroll(by: 6, proxy: verticalProxy)
+            }
+            .frame(maxHeight: 555)
+            .overlay { Rectangle().stroke(SeasonTheme.keyline, lineWidth: 1) }
+            .clipped()
         }
-        .frame(maxHeight: 555)
-        .overlay { Rectangle().stroke(SeasonTheme.keyline, lineWidth: 1) }
-        .clipped()
     }
 
     private var timeRuler: some View {
@@ -593,7 +692,7 @@ private struct JoeTVGuideGrid: View {
         .frame(width: timelineWidth, height: rulerHeight)
     }
 
-    private func programRow(_ channel: LiveChannel) -> some View {
+    private func programRow(_ channel: LiveChannel, isFirstRow: Bool) -> some View {
         let visiblePrograms = programs(for: channel).filter { $0.end > windowStart && $0.start < windowEnd }
         return ZStack(alignment: .leading) {
             SeasonTheme.surface.opacity(0.72)
@@ -624,6 +723,11 @@ private struct JoeTVGuideGrid: View {
                     }
                     .buttonStyle(JoeTVGuideButtonStyle())
                     .focused($focusedID, equals: "program:\(program.id)")
+                    .onKeyPress(.upArrow) {
+                        guard isFirstRow else { return .ignored }
+                        focusFilters()
+                        return .handled
+                    }
                     .offset(x: x)
                 }
             }
@@ -654,6 +758,35 @@ private struct JoeTVGuideGrid: View {
     private func programs(for channel: LiveChannel) -> [EPGProgram] {
         guard let station = mappings[channel.id] else { return [] }
         return guideWindow?.programsByStationID[station] ?? []
+    }
+
+    private func speedScroll(by offset: Int, proxy: ScrollViewProxy) -> KeyPress.Result {
+        guard let focusedID,
+              let currentIndex = channelIndex(for: focusedID) else { return .ignored }
+        let targetIndex = min(max(currentIndex + offset, 0), channels.count - 1)
+        guard targetIndex != currentIndex else { return .handled }
+        let target = channels[targetIndex]
+        let targetProgram = programs(for: target).first(where: { $0.contains(Date()) })
+            ?? programs(for: target).first
+        withAnimation(.easeOut(duration: 0.18)) {
+            proxy.scrollTo("guide-row:\(target.id)", anchor: .center)
+        }
+        self.focusedID = focusedID.hasPrefix("program:")
+            ? targetProgram.map { "program:\($0.id)" } ?? "channel:\(target.id)"
+            : "channel:\(target.id)"
+        return .handled
+    }
+
+    private func channelIndex(for identifier: String) -> Int? {
+        if identifier.hasPrefix("channel:") {
+            let channelID = String(identifier.dropFirst("channel:".count))
+            return channels.firstIndex(where: { $0.id == channelID })
+        }
+        guard identifier.hasPrefix("program:") else { return nil }
+        let programID = String(identifier.dropFirst("program:".count))
+        return channels.firstIndex { channel in
+            programs(for: channel).contains(where: { $0.id == programID })
+        }
     }
 }
 
@@ -1733,9 +1866,30 @@ private struct JoeTVTeamLogo: View {
     }
 }
 
+private enum JoeTVPreviewState {
+    case artwork
+    case loading
+    case playing
+    case unavailable
+}
+
 private struct JoeTVProgramPreview: View {
     let channel: LiveChannel?
     let program: EPGProgram?
+    let session: PlaybackSession?
+    let state: JoeTVPreviewState
+
+    init(
+        channel: LiveChannel?,
+        program: EPGProgram?,
+        session: PlaybackSession? = nil,
+        state: JoeTVPreviewState = .artwork
+    ) {
+        self.channel = channel
+        self.program = program
+        self.session = session
+        self.state = state
+    }
 
     var body: some View {
         ZStack {
@@ -1744,7 +1898,9 @@ private struct JoeTVProgramPreview: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            if let imageURL = program?.imageURL {
+            if let session, state == .playing {
+                JoeTVMutedPreviewPlayer(player: session.player)
+            } else if let imageURL = program?.imageURL {
                 AsyncImage(url: imageURL) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
@@ -1769,11 +1925,21 @@ private struct JoeTVProgramPreview: View {
                 )
                 .frame(width: 270, height: 150)
             }
+
+            if state == .loading {
+                ProgressView()
+                    .controlSize(.large)
+                    .padding(18)
+                    .background(Color.black.opacity(0.62), in: Circle())
+            }
+
             VStack {
                 Spacer()
                 HStack(spacing: 8) {
-                    Circle().fill(SeasonTheme.liveSignal).frame(width: 7, height: 7)
-                    Text("LIVE PREVIEW")
+                    Circle()
+                        .fill(state == .playing ? SeasonTheme.liveSignal : SeasonTheme.secondaryText)
+                        .frame(width: 7, height: 7)
+                    Text(previewLabel)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1)
                     Spacer()
@@ -1785,6 +1951,32 @@ private struct JoeTVProgramPreview: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline) }
         .accessibilityHidden(true)
+    }
+
+    private var previewLabel: String {
+        switch state {
+        case .artwork: return "PREVIEW"
+        case .loading: return "TUNING PREVIEW"
+        case .playing: return "LIVE PREVIEW · MUTED"
+        case .unavailable: return "PREVIEW UNAVAILABLE"
+        }
+    }
+}
+
+private struct JoeTVMutedPreviewPlayer: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = false
+        controller.videoGravity = .resizeAspectFill
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player { controller.player = player }
+        controller.showsPlaybackControls = false
     }
 }
 
@@ -1945,6 +2137,43 @@ private struct JoeTVCompactButtonStyle: ButtonStyle {
     let isPrimary: Bool
     func makeBody(configuration: Configuration) -> some View {
         JoeTVFocusBody(configuration: configuration, isPrimary: isPrimary, compact: true)
+    }
+}
+
+private struct JoeTVGuideFilterButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        JoeTVGuideFilterBody(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+private struct JoeTVGuideFilterBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .tracking(0.2)
+            .foregroundStyle(isFocused || isSelected ? SeasonTheme.paper : SeasonTheme.secondaryText)
+            .padding(.horizontal, 17)
+            .frame(height: 42)
+            .background(
+                isSelected ? SeasonTheme.paper.opacity(0.12) : SeasonTheme.surface,
+                in: RoundedRectangle(cornerRadius: 7)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(
+                        isFocused ? SeasonTheme.focusVolt : isSelected ? SeasonTheme.paper.opacity(0.62) : SeasonTheme.keyline,
+                        lineWidth: isFocused ? SeasonTheme.focusLineWidth : 1
+                    )
+            }
+            .scaleEffect(configuration.isPressed ? 0.98 : isFocused ? 1.025 : 1)
+            .animation(reduceMotion ? nil : SeasonTheme.focusAnimation, value: isFocused)
     }
 }
 
