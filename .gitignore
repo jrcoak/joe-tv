@@ -4,3 +4,4 @@ DerivedData/
 xcuserdata/
 .DS_Store
 Config/Private.xcconfig
+Config/Internal.xcconfig

@@ -1,0 +1,4 @@
+// Local development configuration.
+
+#include "Shared.xcconfig"
+#include? "Private.xcconfig"

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SeasonsTVApp: App {
+struct JoeTVApp: App {
     @StateObject private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 

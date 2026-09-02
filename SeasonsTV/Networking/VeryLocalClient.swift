@@ -147,7 +147,7 @@ final class VeryLocalClient {
             configuration.timeoutIntervalForResource = 30
             configuration.httpAdditionalHeaders = [
                 "Accept": "application/json",
-                "User-Agent": "SeasonsTV/1.0 (tvOS; Very Local public playback)"
+                "User-Agent": "Joe-TV/1.0 (tvOS; Very Local public playback)"
             ]
             self.session = URLSession(configuration: configuration)
         }

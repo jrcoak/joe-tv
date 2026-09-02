@@ -134,7 +134,7 @@ final class SeasonsClient {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = [
             "Accept-Language": "en-US,en;q=0.9",
-            "User-Agent": "SeasonsTV/1.0 (AppleTV; tvOS)"
+            "User-Agent": "Joe-TV/1.0 (AppleTV; tvOS)"
         ]
         self.session = URLSession(configuration: configuration)
     }
@@ -271,6 +271,22 @@ final class SeasonsClient {
         return HTMLCatalogParser.parseCatalog(wrappedHTML, baseURL: baseURL)
             .first(where: { $0.id == "baseball" })?
             .items ?? []
+    }
+
+    func loadESPNPlusEvents(for date: Date, calendar: Calendar = .current) async throws -> [MediaItem] {
+        let day = calendar.startOfDay(for: date)
+        let ticks: Int64
+        if calendar.isDateInToday(day) {
+            ticks = 0
+        } else {
+            let unixMilliseconds = Int64(day.timeIntervalSince1970 * 1_000)
+            ticks = unixMilliseconds * 10_000 + 621_355_968_000_000_000
+        }
+        let data = try await postJSON(
+            path: "/Player/GameList_ESPNPlus",
+            payload: ["ticks": ticks]
+        )
+        return HTMLCatalogParser.parseESPNPlusEvents(data, baseURL: baseURL)
     }
 
     private func postJSON(path: String, payload: [String: Any]) async throws -> Data {

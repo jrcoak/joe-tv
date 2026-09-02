@@ -94,9 +94,9 @@ The single `SeasonsTV` application target has these important settings:
 | Platform | tvOS | Both device and Simulator are supported build destinations. |
 | Deployment target | tvOS 17.0 | Chosen to allow modern SwiftUI/tvOS APIs. |
 | Swift language mode | Swift 5 | Set in the project file. |
-| Bundle identifier | `com.example.SeasonsTV` | Placeholder; replace before device distribution. |
+| Bundle identifier | `com.jrcoak.joetv` | Permanent Joe-TV application identity. |
 | Development team | Configured locally | Confirm the intended team before physical distribution. |
-| Version | 1.0 (build 1) | Initial project version. |
+| Version | 1.0 (build 2) | Increment the build for every TestFlight upload. |
 | Code signing | Automatic | Requires a configured Apple Developer team on hardware. |
 
 Open `SeasonsTV.xcodeproj` in Xcode 26 or newer, select the SeasonsTV scheme, and choose a tvOS destination.
@@ -105,7 +105,8 @@ Guide and sports metadata require private build configuration:
 
 1. Copy `Config/Private.example.xcconfig` to `Config/Private.xcconfig`.
 2. Set `MEDIA_READ_TOKEN` to the same opaque, route-limited read token configured in the Personal Media API deployment.
-3. Keep `Private.xcconfig` uncommitted. CI may instead inject the build setting from its secret manager.
+3. For Internal TestFlight, copy `Config/Internal.example.xcconfig` to `Config/Internal.xcconfig` and use a distinct revocable, rate-limited read token.
+4. Keep both private files uncommitted. CI may instead inject the build setting from its secret manager.
 
 `Config/Shared.xcconfig` supplies the non-secret base URL and optionally includes the private file. `Info.plist` exposes the expanded values to the app as `MediaAPIBaseURL` and `MediaReadToken`. Debug builds without a token remain usable for playback and show a clear schedule-configuration error. Release builds run `scripts/validate-media-read-token.sh` and fail when the token is missing, shorter than 32 characters, or a placeholder.
 
@@ -125,7 +126,7 @@ xcodebuild \
 Before running on hardware:
 
 1. Select a Development Team.
-2. Replace `com.example.SeasonsTV` with a unique bundle identifier.
+2. Confirm the permanent `com.jrcoak.joetv` bundle identifier is registered to the intended team.
 3. Pair/select the Apple TV in Xcode.
 4. Confirm the Apple TV can reach Seasons4U under the account's required IP/region conditions.
 5. Build, sign in inside the app, and test several channels.
@@ -540,8 +541,8 @@ Recommended validation after every upstream parser or playback change:
 - The API supports one active `MEDIA_READ_TOKEN`, so rotation has no overlap window and requires a coordinated app/API rollout.
 - No retry/backoff, reachability UI, request timeout policy, or cancellation from the loading overlay.
 - No automated UI tests or XCTest target.
-- No accessibility audit, localization, telemetry, crash reporting, or privacy manifest work has been completed.
-- No app icon/top-shelf assets or production launch branding have been completed.
+- No accessibility audit, localization, telemetry, or crash reporting has been completed. The privacy manifest declares app-scoped `UserDefaults` access and no tracking or collected data.
+- Joe-TV includes layered tvOS app-icon and static top-shelf assets; final production branding can still be revised without changing the bundle identity.
 - Channel genres are heuristic and English-name dependent.
 - The parser manually decodes only a small set of HTML entities.
 - Channel logos are bundled locally; other event/program artwork has no custom cache or explicit storage budget.

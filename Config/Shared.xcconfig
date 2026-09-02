@@ -1,7 +1,5 @@
 // Shared, non-secret Personal Media API build configuration.
-// Private.xcconfig is intentionally ignored and supplied locally or by CI.
+// Debug.xcconfig and Release.xcconfig inject environment-specific secrets.
 
 MEDIA_API_BASE_URL = https:/$()/personal-media-api.vercel.app
 MEDIA_READ_TOKEN =
-
-#include? "Private.xcconfig"

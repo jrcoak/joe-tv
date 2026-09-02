@@ -1,4 +1,4 @@
-// Copy this file to Private.xcconfig and inject the private read-only token.
-// Never commit Private.xcconfig or the real MEDIA_READ_TOKEN value.
+// Copy this file to Private.xcconfig for local Debug builds.
+// Never use the development token for TestFlight or commit the real value.
 
 MEDIA_READ_TOKEN =

@@ -167,6 +167,7 @@ enum HTMLCatalogParser {
 
             let rawID = dynamicString(in: game, keys: ["id", "gameid", "eventid", "code"])
                 ?? "\(categoryID)-\(index)-\(title)"
+            let providerEventDateCode = dynamicString(in: game, keys: ["datecode"])
             let subtitle = dynamicScheduleText(in: game)
             let imageString = dynamicString(
                 in: game,
@@ -187,8 +188,77 @@ enum HTMLCatalogParser {
                 subtitle: subtitle,
                 imageURL: imageURL,
                 categoryID: categoryID,
-                playbackOptions: playbackOptions
+                playbackOptions: playbackOptions,
+                providerEventDateCode: providerEventDateCode
             )
+        }
+    }
+
+    static func parseESPNPlusEvents(_ data: Data, baseURL: URL) -> [MediaItem] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
+
+        let airings: [[String: Any]]
+        if let dictionary = object as? [String: Any] {
+            airings = dynamicArray(in: dictionary, keys: ["airings", "events", "games"])
+                .compactMap { $0 as? [String: Any] }
+        } else if let array = object as? [[String: Any]] {
+            airings = array
+        } else {
+            return []
+        }
+
+        var seen = Set<String>()
+        return airings.compactMap { game -> MediaItem? in
+            guard let title = dynamicString(in: game, keys: ["name", "title"]),
+                  let sourceValue = dynamicValue(in: game, keys: ["source"]),
+                  let playbackID = dynamicString(
+                    in: dynamicDictionary(sourceValue),
+                    keys: ["playbackid", "playbackId"]
+                  ),
+                  !playbackID.isEmpty else { return nil }
+
+            let network = dynamicValue(in: game, keys: ["network"])
+                .map(dynamicDictionary)
+                .flatMap { dynamicString(in: $0, keys: ["name", "title"]) }
+                ?? "ESPN+"
+            let competition = ["subcategory", "league", "sport"].lazy.compactMap { key in
+                dynamicValue(in: game, keys: [key])
+                    .map(dynamicDictionary)
+                    .flatMap { dynamicString(in: $0, keys: ["name", "title"]) }
+            }.first ?? "ESPN+"
+            let imageURL = dynamicValue(in: game, keys: ["image"])
+                .map(dynamicDictionary)
+                .flatMap { dynamicString(in: $0, keys: ["url", "href"]) }
+                .flatMap { absoluteURL($0, relativeTo: baseURL) }
+
+            let metadata = espnPlusPlaybackMetadata(playbackID)
+            let type = dynamicString(in: game, keys: ["type", "airingtype"])?.lowercased()
+            let isReplay = type == "replay" || metadata.contentType == "vod"
+
+            var components = URLComponents(url: baseURL.appending(path: "/PlayerDRMEP/Watch"), resolvingAgainstBaseURL: true)
+            components?.queryItems = [URLQueryItem(name: "id", value: playbackID)]
+            guard let pageURL = components?.url else { return nil }
+
+            let stableID = metadata.mediaID ?? metadata.sourceID ?? playbackID
+            guard seen.insert(stableID).inserted else { return nil }
+            let subtitle = [competition, network, isReplay ? "Replay" : "Live"]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · ")
+
+            return MediaItem(
+                id: "espnplus|\(stableID)",
+                title: title,
+                subtitle: subtitle,
+                imageURL: imageURL,
+                categoryID: "espnplus",
+                playback: .drmPage(pageURL)
+            )
+        }
+        .sorted { left, right in
+            let leftReplay = left.subtitle?.localizedCaseInsensitiveContains("Replay") == true
+            let rightReplay = right.subtitle?.localizedCaseInsensitiveContains("Replay") == true
+            if leftReplay != rightReplay { return !leftReplay }
+            return left.title.localizedStandardCompare(right.title) == .orderedAscending
         }
     }
 
@@ -261,7 +331,8 @@ enum HTMLCatalogParser {
                 subtitle: primary.subtitle,
                 imageURL: primary.imageURL ?? supplemental.imageURL,
                 categoryID: primary.categoryID,
-                playbackOptions: uniquelyIdentified
+                playbackOptions: uniquelyIdentified,
+                providerEventDateCode: primary.providerEventDateCode
             )
         }
     }
@@ -942,6 +1013,21 @@ enum HTMLCatalogParser {
         return nil
     }
 
+    private static func espnPlusPlaybackMetadata(
+        _ playbackID: String
+    ) -> (mediaID: String?, sourceID: String?, contentType: String?) {
+        guard let data = Data(base64Encoded: playbackID),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return (nil, nil, nil)
+        }
+        return (
+            dynamicString(in: dictionary, keys: ["mediaid", "mediaId"]),
+            dynamicString(in: dictionary, keys: ["sourceid", "sourceId"]),
+            dynamicString(in: dictionary, keys: ["contenttype", "contentType"])?.lowercased()
+        )
+    }
+
     private static func cleanTitle(_ value: String) -> String {
         value
             .replacingOccurrences(of: #"<!--|-->"#, with: "", options: .regularExpression)
@@ -1095,7 +1181,15 @@ enum SportsScheduleEnricher {
     ) -> [CatalogCategory] {
         var categories = playbackCategories
 
-        for event in snapshot.events {
+        let eventsByPlaybackAffinity = snapshot.events.sorted {
+            let leftRank = playbackAffinityRank($0, relativeTo: snapshot.generatedAt)
+            let rightRank = playbackAffinityRank($1, relativeTo: snapshot.generatedAt)
+            if leftRank != rightRank { return leftRank < rightRank }
+            if leftRank == 2 { return $0.startsAt > $1.startsAt }
+            return $0.startsAt < $1.startsAt
+        }
+
+        for event in eventsByPlaybackAffinity {
             guard let categoryID = categoryID(for: event) else { continue }
             let categoryIndex: Int
             if let existing = categories.firstIndex(where: { $0.id == categoryID }) {
@@ -1111,7 +1205,9 @@ enum SportsScheduleEnricher {
             }
 
             if let itemIndex = categories[categoryIndex].items.firstIndex(where: {
-                titlesDescribeSameEvent($0.title, eventTitle(event))
+                !$0.id.hasPrefix("schedule|") &&
+                    $0.sportsEvent == nil &&
+                    playbackItem($0, matches: event)
             }) {
                 let playbackItem = categories[categoryIndex].items[itemIndex]
                 categories[categoryIndex].items[itemIndex] = MediaItem(
@@ -1121,7 +1217,8 @@ enum SportsScheduleEnricher {
                     imageURL: event.thumbnailURL ?? playbackItem.imageURL,
                     categoryID: categoryID,
                     playbackOptions: playbackItem.playbackOptions,
-                    sportsEvent: event
+                    sportsEvent: event,
+                    providerEventDateCode: playbackItem.providerEventDateCode
                 )
             } else {
                 categories[categoryIndex].items.append(MediaItem(
@@ -1153,6 +1250,53 @@ enum SportsScheduleEnricher {
             }.map(\.element)
             return category
         }
+    }
+
+    private static func playbackAffinityRank(
+        _ event: SportsScheduleEvent,
+        relativeTo referenceDate: Date
+    ) -> Int {
+        let status = event.status?.lowercased() ?? ""
+        if status.contains("progress") || status.contains("live") ||
+            status.contains("half") || status.contains("period") {
+            return 0
+        }
+        if event.startsAt >= referenceDate { return 1 }
+        return 2
+    }
+
+    private static func playbackItem(_ item: MediaItem, matches event: SportsScheduleEvent) -> Bool {
+        guard titlesDescribeSameEvent(item.title, eventTitle(event)) else { return false }
+        guard let providerDateCode = providerDateCode(for: item) else { return true }
+        return providerDateCode == dateCode(for: event.startsAt)
+    }
+
+    private static func providerDateCode(for item: MediaItem) -> String? {
+        if let explicit = normalizedDateCode(item.providerEventDateCode) { return explicit }
+        return item.playbackOptions.lazy.compactMap { option -> String? in
+            guard case .request(let request) = option.playback,
+                  request.controller.caseInsensitiveCompare("bsb") == .orderedSame,
+                  request.arguments.indices.contains(5) else { return nil }
+            return normalizedDateCode(request.arguments[5])
+        }.first
+    }
+
+    private static func normalizedDateCode(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let digits = value.filter(\.isNumber)
+        return digits.count == 8 ? digits : nil
+    }
+
+    private static func dateCode(for date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d%02d%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
     }
 
     private static func categoryID(for event: SportsScheduleEvent) -> String? {

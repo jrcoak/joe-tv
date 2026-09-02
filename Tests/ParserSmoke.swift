@@ -135,6 +135,90 @@ enum ParserSmoke {
               detailIdentity.cacheKey == "football/nfl/401772510" else {
             fatalError("ESPN event identity was not restricted to an allowlisted league")
         }
+        let seriesReference = ISO8601DateFormatter().date(from: "2026-08-31T12:00:00Z")!
+        func baseballSeriesEvent(id: String, startsAt: Date, status: String = "Scheduled") -> SportsScheduleEvent {
+            SportsScheduleEvent(
+                eventID: id,
+                title: "Miami Marlins at Washington Nationals",
+                sport: "Baseball",
+                leagueID: "mlb",
+                league: "MLB",
+                startsAt: startsAt,
+                endsAt: nil,
+                status: status,
+                venue: "Nationals Park",
+                country: "United States",
+                homeTeamID: "20",
+                homeTeam: "Washington Nationals",
+                homeTeamLogoURL: nil,
+                awayTeamID: "28",
+                awayTeam: "Miami Marlins",
+                awayTeamLogoURL: nil,
+                homeScore: nil,
+                awayScore: nil,
+                thumbnailURL: nil,
+                sourceDate: nil,
+                sourceTime: nil,
+                broadcasts: []
+            )
+        }
+        let repeatedSeries = SportsScheduleSnapshot(
+            provider: "ESPN",
+            generatedAt: seriesReference,
+            windowStart: "2026-08-30",
+            windowEnd: "2026-09-02",
+            events: [
+                baseballSeriesEvent(id: "past", startsAt: ISO8601DateFormatter().date(from: "2026-08-30T18:00:00Z")!, status: "Final"),
+                baseballSeriesEvent(id: "today", startsAt: ISO8601DateFormatter().date(from: "2026-08-31T18:00:00Z")!),
+                baseballSeriesEvent(id: "tomorrow", startsAt: ISO8601DateFormatter().date(from: "2026-09-01T18:00:00Z")!)
+            ]
+        )
+        let seriesPlayback = MediaItem(
+            id: "s4u-marlins-nationals",
+            title: "Marlins @ Nationals",
+            subtitle: "Scheduled",
+            imageURL: nil,
+            categoryID: "baseball",
+            playback: .request(PlaybackRequest(
+                endpoint: "/Player/Watch_BSB",
+                controller: "bsb",
+                arguments: ["game-id", "replay", "away", "media-id", "false", "20260830"]
+            )),
+            providerEventDateCode: "20260830"
+        )
+        let repeatedSeriesMerge = SportsScheduleEnricher.merge(
+            repeatedSeries,
+            into: [CatalogCategory(id: "baseball", title: "Baseball", symbol: "baseball.fill", items: [seriesPlayback])]
+        )
+        let repeatedSeriesItems = repeatedSeriesMerge.first?.items ?? []
+        guard repeatedSeriesItems.count == 3,
+              Set(repeatedSeriesItems.compactMap { $0.sportsEvent?.eventID }) == Set(["past", "today", "tomorrow"]),
+              repeatedSeriesItems.first(where: { $0.id == seriesPlayback.id })?.sportsEvent?.eventID == "past",
+              repeatedSeriesItems.first(where: { $0.sportsEvent?.eventID == "today" })?.isPlayable == false else {
+            fatalError("Repeated series games were collapsed or attached to the wrong playback item")
+        }
+        let prematureTodayStream = MediaItem(
+            id: "premature-today-stream",
+            title: "Marlins @ Nationals",
+            subtitle: "Scheduled",
+            imageURL: nil,
+            categoryID: "baseball",
+            playback: .hls(URL(string: "https://media.example/stale-live-channel.m3u8")!),
+            sportsEvent: repeatedSeries.events[1],
+            providerEventDateCode: "20260831"
+        )
+        let coverageStart = repeatedSeries.events[1].startsAt
+            .addingTimeInterval(-MediaItem.sportsCoverageLeadTime)
+        guard prematureTodayStream.isPlayable,
+              !prematureTodayStream.sportsPlaybackAvailable(at: seriesReference),
+              !prematureTodayStream.sportsPlaybackAvailable(at: coverageStart.addingTimeInterval(-1)),
+              prematureTodayStream.sportsPlaybackAvailable(at: coverageStart),
+              prematureTodayStream.sportsCoverageStartsAt == coverageStart,
+              prematureTodayStream.sportsPlaybackAvailable(
+                at: repeatedSeries.events[1].startsAt.addingTimeInterval(1)
+              ) else {
+            fatalError("Pregame direct streams were not gated until the 15-minute coverage window")
+        }
         let detailRequest = MediaAPIRequestBuilder.makeRequest(
             configuration: mediaConfiguration,
             route: .sportsEventDetail(detailIdentity)
@@ -263,6 +347,57 @@ enum ParserSmoke {
         guard genericESPNShortcut.isGenericSportsChannelShortcut,
               !footballPlaybackItem.isGenericSportsChannelShortcut else {
             fatalError("Generic ESPN channel shortcuts were not distinguished from scheduled sports events")
+        }
+
+        let espnPlusLivePlaybackID = try! JSONSerialization.data(withJSONObject: [
+            "channelId": "espn-unlimited-court-7",
+            "mediaId": "live-media-7",
+            "contentType": "live",
+            "sourceId": "live-source-7"
+        ]).base64EncodedString()
+        let espnPlusReplayPlaybackID = try! JSONSerialization.data(withJSONObject: [
+            "channelId": "espn-plus-replay",
+            "mediaId": "replay-media-2",
+            "contentType": "vod",
+            "sourceId": "replay-source-2"
+        ]).base64EncodedString()
+        let espnPlusPayload = try! JSONSerialization.data(withJSONObject: [
+            "airings": [
+                [
+                    "name": "US Open Court 7",
+                    "type": "LIVE",
+                    "subcategory": ["name": "US Open"],
+                    "network": ["name": "ESPN Unlimited"],
+                    "image": ["url": "https://media.example/us-open-live.jpg"],
+                    "source": ["playbackId": espnPlusLivePlaybackID]
+                ],
+                [
+                    "name": "US Open Match Replay",
+                    "type": "REPLAY",
+                    "subcategory": ["name": "US Open"],
+                    "network": ["name": "ESPN+"],
+                    "image": ["url": "https://media.example/us-open-replay.jpg"],
+                    "source": ["playbackId": espnPlusReplayPlaybackID]
+                ]
+            ]
+        ])
+        let espnPlusItems = HTMLCatalogParser.parseESPNPlusEvents(
+            espnPlusPayload,
+            baseURL: baseURL
+        )
+        guard espnPlusItems.count == 2,
+              espnPlusItems[0].id == "espnplus|live-media-7",
+              espnPlusItems[0].title == "US Open Court 7",
+              espnPlusItems[0].subtitle == "US Open · ESPN Unlimited · Live",
+              espnPlusItems[0].imageURL?.path == "/us-open-live.jpg",
+              espnPlusItems[0].sportsPhase(at: Date()) == .live,
+              espnPlusItems[1].id == "espnplus|replay-media-2",
+              espnPlusItems[1].sportsPhase(at: Date()) == .replay,
+              case .drmPage(let espnPlusPage) = espnPlusItems[0].playback,
+              espnPlusPage.path == "/PlayerDRMEP/Watch",
+              URLComponents(url: espnPlusPage, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "id" })?.value == espnPlusLivePlaybackID else {
+            fatalError("ESPN+ live/replay metadata or FairPlay page identity was not parsed")
         }
 
         let html = #"""

@@ -6,6 +6,7 @@ final class AppModel: ObservableObject {
         case home
         case liveTV
         case sports
+        case espnPlus
     }
 
     enum Screen {
@@ -27,10 +28,14 @@ final class AppModel: ObservableObject {
     @Published var lastFocusedEventID: String?
     @Published var epgState: EPGLoadState = .unavailable
     @Published private(set) var disabledChannelIDs: Set<String>
+    @Published private(set) var favoriteChannelIDs: Set<String>
     @Published private(set) var enabledSportsCategoryIDs: Set<String>
     @Published private(set) var sportsSchedule: SportsScheduleSnapshot?
     @Published private(set) var sportsEventDetails: [String: SportsEventDetail] = [:]
     @Published var sportsScheduleState: ContentLoadState = .idle
+    @Published private(set) var espnPlusItems: [MediaItem] = []
+    @Published private(set) var espnPlusDate = Calendar.current.startOfDay(for: Date())
+    @Published var espnPlusState: ContentLoadState = .idle
     @Published var channelStationMappings: [String: String] = [:]
     @Published var channelState: ContentLoadState = .idle
     @Published private(set) var veryLocalState: ContentLoadState = .idle
@@ -51,11 +56,15 @@ final class AppModel: ObservableObject {
     private var playbackCategories: [CatalogCategory] = []
     private var epgRequestID = UUID()
     private var sportsScheduleRequestID = UUID()
+    private var espnPlusRequestID = UUID()
     private var sportsDetailPrefetchTask: Task<Void, Never>?
     private var sportsDetailFocusTask: Task<Void, Never>?
+    private var hasStoredFavoriteChannelSelection: Bool
 
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
     private static let disabledChannelsKey = "channels.disabledIDs"
+    private static let favoriteChannelsKey = "channels.favoriteIDs"
+    private static let sportsDetailPrefetchLimit = 12
     private static let defaultDisabledChannelIDs: Set<String> = [
         // Seasons4U
         "6eb90a9b-2da1-4469-bd63-9801c8df705b", // UNIVERSO
@@ -116,6 +125,13 @@ final class AppModel: ObservableObject {
                 forKey: Self.disabledChannelsKey
             )
         }
+        if let stored = defaults.array(forKey: Self.favoriteChannelsKey) as? [String] {
+            self.favoriteChannelIDs = Set(stored)
+            self.hasStoredFavoriteChannelSelection = true
+        } else {
+            self.favoriteChannelIDs = []
+            self.hasStoredFavoriteChannelSelection = false
+        }
         if let stored = defaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
             self.enabledSportsCategoryIDs = Set(stored)
         } else {
@@ -165,6 +181,30 @@ final class AppModel: ObservableObject {
 
     func isChannelEnabled(_ channelID: String) -> Bool {
         !disabledChannelIDs.contains(channelID)
+    }
+
+    var favoriteLiveChannels: [LiveChannel] {
+        liveChannels.filter { favoriteChannelIDs.contains($0.id) }
+    }
+
+    func isChannelFavorite(_ channelID: String) -> Bool {
+        favoriteChannelIDs.contains(channelID)
+    }
+
+    func setChannelFavorite(_ channelID: String, favorite: Bool) {
+        hasStoredFavoriteChannelSelection = true
+        if favorite {
+            favoriteChannelIDs.insert(channelID)
+        } else {
+            favoriteChannelIDs.remove(channelID)
+        }
+        persistFavoriteChannels()
+    }
+
+    func clearFavoriteChannels() {
+        hasStoredFavoriteChannelSelection = true
+        favoriteChannelIDs.removeAll()
+        persistFavoriteChannels()
     }
 
     func setChannel(_ channelID: String, enabled: Bool) {
@@ -298,6 +338,39 @@ final class AppModel: ObservableObject {
         await refreshSportsSchedule()
     }
 
+    func loadESPNPlus(for date: Date? = nil) async {
+        let requestedDate = Calendar.current.startOfDay(for: date ?? espnPlusDate)
+        let requestID = UUID()
+        espnPlusRequestID = requestID
+        espnPlusDate = requestedDate
+        espnPlusState = .loading
+
+        do {
+            let items = try await client.loadESPNPlusEvents(for: requestedDate)
+            guard espnPlusRequestID == requestID else { return }
+            espnPlusItems = items
+            espnPlusState = .loaded
+        } catch SeasonsError.authenticationRequired {
+            guard espnPlusRequestID == requestID else { return }
+            screen = .signedOut
+            errorMessage = "Your session expired. Sign in again."
+            espnPlusState = .failed("Sign in again to load ESPN+.")
+        } catch {
+            guard espnPlusRequestID == requestID else { return }
+            espnPlusItems = []
+            espnPlusState = .failed(error.localizedDescription)
+        }
+    }
+
+    func moveESPNPlusDate(by dayOffset: Int) async {
+        guard let date = Calendar.current.date(
+            byAdding: .day,
+            value: dayOffset,
+            to: espnPlusDate
+        ) else { return }
+        await loadESPNPlus(for: date)
+    }
+
     private func refreshSportsSchedule() async {
         let requestID = UUID()
         sportsScheduleRequestID = requestID
@@ -419,7 +492,7 @@ final class AppModel: ObservableObject {
                   let identity = SportsEventDetailIdentity(event: event),
                   seenIdentities.insert(identity).inserted else { return nil }
             return identity
-        }.prefix(5).map { $0 }
+        }.prefix(Self.sportsDetailPrefetchLimit).map { $0 }
     }
 
     private func isSportsItemLive(_ item: MediaItem, at date: Date) -> Bool {
@@ -525,6 +598,9 @@ final class AppModel: ObservableObject {
         }
         do {
             try await loadContent(blocking: false)
+            if destination == .espnPlus {
+                await loadESPNPlus(for: espnPlusDate)
+            }
         } catch SeasonsError.authenticationRequired {
             screen = .signedOut
             errorMessage = "Your session expired. Sign in again."
@@ -611,6 +687,9 @@ final class AppModel: ObservableObject {
         client.clearLocalSession()
         categories = []
         playbackCategories = []
+        espnPlusItems = []
+        espnPlusDate = Calendar.current.startOfDay(for: Date())
+        espnPlusState = .idle
         liveChannels = []
         availableLiveChannels = []
         isVeryLocalOnly = false
@@ -663,6 +742,18 @@ final class AppModel: ObservableObject {
     private func replaceAvailableChannels(with channels: [LiveChannel]) {
         availableLiveChannels = channels
         applyChannelPreferences()
+        adoptInitialFavoriteChannelsIfNeeded()
+    }
+
+    private func adoptInitialFavoriteChannelsIfNeeded() {
+        guard !hasStoredFavoriteChannelSelection, !liveChannels.isEmpty else { return }
+        favoriteChannelIDs = Set(liveChannels.prefix(7).map(\.id))
+        hasStoredFavoriteChannelSelection = true
+        persistFavoriteChannels()
+    }
+
+    private func persistFavoriteChannels() {
+        defaults.set(Array(favoriteChannelIDs).sorted(), forKey: Self.favoriteChannelsKey)
     }
 
     private func applyChannelPreferences() {

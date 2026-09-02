@@ -21,7 +21,7 @@ struct RootView: View {
             }
         }
         .alert(
-            "JOE-TV",
+            "Joe-TV",
             isPresented: Binding(
                 get: { model.errorMessage != nil },
                 set: { if !$0 { model.errorMessage = nil } }
@@ -58,27 +58,20 @@ private struct LoginView: View {
     private enum Field { case email, password }
 
     var body: some View {
-        HStack(spacing: 88) {
-            VStack(alignment: .leading, spacing: 20) {
+        HStack(spacing: 64) {
+            VStack(spacing: 20) {
                 BrandMark(size: 116)
-                Text("JOE-TV")
+                Text("Joe-TV")
                     .font(.headline.monospaced().weight(.semibold))
                     .tracking(4)
                     .foregroundStyle(SeasonTheme.liveSignal)
-                Text("Live television,\nmade for your TV.")
-                    .font(.system(size: 58, weight: .semibold))
-                    .lineSpacing(-4)
-                Text("Use your existing Seasons4U membership to watch live channels and sports.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: 620, alignment: .leading)
             }
-            .frame(maxWidth: 650, alignment: .leading)
+            .frame(width: 300)
 
             VStack(alignment: .leading, spacing: 22) {
                 Text("Sign in")
                     .font(.system(size: 44, weight: .semibold))
-                Text("Your password is used only to sign in and is never stored by JOE-TV.")
+                Text("Your password is used only to sign in and is never stored by Joe-TV.")
                     .font(.body)
                     .foregroundStyle(.secondary)
 
@@ -105,24 +98,6 @@ private struct LoginView: View {
                 .disabled(model.isWorking)
                 .accessibilityIdentifier("login.submit")
 
-                HStack(spacing: 12) {
-                    Rectangle().fill(SeasonTheme.keyline).frame(height: 1)
-                    Text("OR")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Rectangle().fill(SeasonTheme.keyline).frame(height: 1)
-                }
-
-                Button {
-                    model.openVeryLocal()
-                } label: {
-                    Label("Watch Very Local free", systemImage: "location.fill.viewfinder")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .frame(minHeight: 60)
-                .accessibilityIdentifier("login.veryLocal")
             }
             .padding(44)
             .frame(width: 640)
@@ -152,7 +127,9 @@ private struct CatalogView: View {
     @State private var homeEntryFocusRequest = 0
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
+    @State private var espnPlusEntryFocusRequest = 0
     @FocusState private var focusedDestination: AppModel.Destination?
+    @FocusState private var moreIsFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -178,6 +155,11 @@ private struct CatalogView: View {
                             entryFocusRequest: sportsEntryFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
+                    case .espnPlus:
+                        JoeTVESPNPlusView(
+                            entryFocusRequest: espnPlusEntryFocusRequest,
+                            onFocusNavigation: focusCurrentDestination
+                        )
                     }
                 }
                 .frame(width: geometry.size.width, alignment: .topLeading)
@@ -188,7 +170,7 @@ private struct CatalogView: View {
             .clipped()
         }
         .confirmationDialog(
-            "Sign out of JOE-TV?",
+            "Sign out of Joe-TV?",
             isPresented: $confirmsSignOut,
             titleVisibility: .visible
         ) {
@@ -209,7 +191,7 @@ private struct CatalogView: View {
         HStack(spacing: 18) {
             BrandMark(size: 44)
                 .accessibilityHidden(true)
-            Text("JOE-TV")
+            Text("Joe-TV")
                 .font(.subheadline.monospaced().weight(.bold))
                 .tracking(2.4)
 
@@ -217,7 +199,8 @@ private struct CatalogView: View {
                 destinationButton("Home", symbol: "house.fill", destination: .home)
                 destinationButton("Live TV", symbol: "rectangle.grid.1x2.fill", destination: .liveTV)
                 if !model.isVeryLocalOnly {
-                    destinationButton("Sports", symbol: "sportscourt.fill", destination: .sports)
+                    destinationButton("Live Sports", symbol: "sportscourt.fill", destination: .sports)
+                    destinationButton("ESPN+", symbol: "play.rectangle.fill", destination: .espnPlus)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -269,6 +252,27 @@ private struct CatalogView: View {
                     .frame(width: 48, height: 38)
             }
             .buttonStyle(TopNavigationButtonStyle(isSelected: false))
+            .focused($moreIsFocused)
+            .onKeyPress(.leftArrow) {
+                moreIsFocused = false
+                focusedDestination = model.isVeryLocalOnly ? .liveTV : .espnPlus
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                requestContentFocus(from: nil)
+                return .handled
+            }
+            .onMoveCommand { direction in
+                switch direction {
+                case .left:
+                    moreIsFocused = false
+                    focusedDestination = model.isVeryLocalOnly ? .liveTV : .espnPlus
+                case .down:
+                    requestContentFocus(from: nil)
+                default:
+                    break
+                }
+            }
             .accessibilityLabel("More")
             .accessibilityIdentifier("navigation.more")
         }
@@ -290,23 +294,85 @@ private struct CatalogView: View {
         }
         .buttonStyle(TopNavigationButtonStyle(isSelected: model.destination == destination))
         .focused($focusedDestination, equals: destination)
+        .onKeyPress(.leftArrow) {
+            focusNavigationItem(leftOf: destination)
+            return destination == .home ? .ignored : .handled
+        }
+        .onKeyPress(.rightArrow) {
+            focusNavigationItem(rightOf: destination)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            requestContentFocus(from: destination)
+            return .handled
+        }
         .onMoveCommand { direction in
-            if direction == .down {
-                switch destination {
-                case .home:
-                    homeEntryFocusRequest += 1
-                case .liveTV:
-                    liveTVEntryFocusRequest += 1
-                case .sports:
-                    sportsEntryFocusRequest += 1
-                }
+            switch direction {
+            case .left:
+                focusNavigationItem(leftOf: destination)
+            case .right:
+                focusNavigationItem(rightOf: destination)
+            case .down:
+                requestContentFocus(from: destination)
+            default:
+                break
             }
         }
         .accessibilityAddTraits(model.destination == destination ? .isSelected : [])
     }
 
     private func focusCurrentDestination() {
+        moreIsFocused = false
         focusedDestination = model.destination
+    }
+
+    private func focusNavigationItem(leftOf destination: AppModel.Destination) {
+        moreIsFocused = false
+        switch destination {
+        case .home:
+            break
+        case .liveTV:
+            focusedDestination = .home
+        case .sports:
+            focusedDestination = .liveTV
+        case .espnPlus:
+            focusedDestination = .sports
+        }
+    }
+
+    private func focusNavigationItem(rightOf destination: AppModel.Destination) {
+        switch destination {
+        case .home:
+            moreIsFocused = false
+            focusedDestination = .liveTV
+        case .liveTV:
+            if model.isVeryLocalOnly {
+                focusedDestination = nil
+                moreIsFocused = true
+            } else {
+                moreIsFocused = false
+                focusedDestination = .sports
+            }
+        case .sports:
+            moreIsFocused = false
+            focusedDestination = .espnPlus
+        case .espnPlus:
+            focusedDestination = nil
+            moreIsFocused = true
+        }
+    }
+
+    private func requestContentFocus(from _: AppModel.Destination?) {
+        switch model.destination {
+        case .home:
+            homeEntryFocusRequest += 1
+        case .liveTV:
+            liveTVEntryFocusRequest += 1
+        case .sports:
+            sportsEntryFocusRequest += 1
+        case .espnPlus:
+            espnPlusEntryFocusRequest += 1
+        }
     }
 }
 
@@ -341,7 +407,7 @@ private struct ChannelSettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Channels")
                         .font(.system(size: 42, weight: .semibold))
-                    Text("Choose which channels appear in Live TV.")
+                    Text("Choose which channels appear in Live TV and which favorites appear on Home.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -361,42 +427,67 @@ private struct ChannelSettingsView: View {
 
                         ForEach(section.channels) { channel in
                             let isEnabled = model.isChannelEnabled(channel.id)
-                            Button {
-                                model.setChannel(channel.id, enabled: !isEnabled)
-                            } label: {
-                                HStack(spacing: 18) {
-                                    ArtworkView(
-                                        url: channel.logoURL,
-                                        symbol: "tv",
-                                        localAssetName: ChannelDirectory.brandAssetName(
-                                            forPlaybackIdentity: channel.id
-                                        ),
-                                        outerPadding: 3,
-                                        artworkPadding: 5
-                                    )
-                                    .frame(width: 96, height: 56)
+                            let isFavorite = model.isChannelFavorite(channel.id)
+                            HStack(spacing: 12) {
+                                Button {
+                                    model.setChannel(channel.id, enabled: !isEnabled)
+                                } label: {
+                                    HStack(spacing: 18) {
+                                        ArtworkView(
+                                            url: channel.logoURL,
+                                            symbol: "tv",
+                                            localAssetName: ChannelDirectory.brandAssetName(
+                                                forPlaybackIdentity: channel.id
+                                            ),
+                                            outerPadding: 3,
+                                            artworkPadding: 5
+                                        )
+                                        .frame(width: 96, height: 56)
 
-                                    Text(channel.name)
-                                        .font(.title3.weight(.medium))
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(isEnabled ? SeasonTheme.accent : .secondary)
+                                        Text(channel.name)
+                                            .font(.title3.weight(.medium))
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                                            .foregroundStyle(isEnabled ? SeasonTheme.accent : .secondary)
+                                    }
+                                    .frame(maxWidth: .infinity)
                                 }
+                                .buttonStyle(SportsSettingsRowButtonStyle())
+                                .accessibilityLabel("\(channel.name), Live TV")
+                                .accessibilityValue(isEnabled ? "Enabled" : "Disabled")
+                                .accessibilityIdentifier("settings.channel.\(channel.id)")
+
+                                Button {
+                                    model.setChannelFavorite(channel.id, favorite: !isFavorite)
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: isFavorite ? "star.fill" : "star")
+                                            .font(.system(size: 20, weight: .semibold))
+                                            .foregroundStyle(isFavorite ? SeasonTheme.focusVolt : .secondary)
+                                        Text("Favorite")
+                                            .font(.caption.weight(.semibold))
+                                    }
+                                    .frame(width: 92)
+                                }
+                                .buttonStyle(SportsSettingsRowButtonStyle())
+                                .accessibilityLabel("\(channel.name), Favorite")
+                                .accessibilityValue(isFavorite ? "Yes" : "No")
+                                .accessibilityIdentifier("settings.favorite.\(channel.id)")
                             }
-                            .buttonStyle(SportsSettingsRowButtonStyle())
-                            .accessibilityValue(isEnabled ? "Enabled" : "Disabled")
-                            .accessibilityIdentifier("settings.channel.\(channel.id)")
                         }
                     }
                 }
             }
 
             HStack {
-                Text("\(enabledCount) of \(model.availableLiveChannels.count) channels enabled")
+                Text("\(enabledCount) enabled · \(model.favoriteChannelIDs.count) favorites")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button("Clear Favorites") { model.clearFavoriteChannels() }
+                    .buttonStyle(.bordered)
+                    .disabled(model.favoriteChannelIDs.isEmpty)
                 Button("Restore Defaults") { model.restoreDefaultChannels() }
                     .buttonStyle(.bordered)
                 Button("Enable All") { model.enableAllChannels() }
@@ -1685,7 +1776,7 @@ private struct SportsView: View {
                                 switch direction {
                                 case .up where category.items.first?.id == item.id:
                                     focusSelectedCategory()
-                                case .right where item.isPlayable:
+                                case .right where item.sportsPlaybackAvailable(at: Date()):
                                     focusBestAction()
                                 default:
                                     break
@@ -1798,9 +1889,10 @@ private struct SportsView: View {
                     .onMoveCommand { if $0 == .left { focusSelectedEvent() } }
 
                     alternateFeedPicker(item, options: alternates)
-                } else if item != nil {
-                    Label("Stream not published yet", systemImage: "calendar")
-                        .font(.headline)
+                } else if let item {
+                    Label(unavailableActionTitle(for: item, at: Date()), systemImage: "clock")
+                        .font(.system(size: 17, weight: .semibold, design: .monospaced))
+                        .tracking(0.7)
                         .foregroundStyle(LiveTVPalette.mutedText)
                 }
             }
@@ -1859,6 +1951,7 @@ private struct SportsView: View {
     }
 
     private func bestOption(for item: MediaItem) -> MediaItem.PlaybackOption? {
+        guard item.sportsPlaybackAvailable(at: Date()) else { return nil }
         let playable = item.playbackOptions.filter { option in
             if case .unavailable = option.playback { return false }
             return true
@@ -1876,8 +1969,23 @@ private struct SportsView: View {
 
     private func stageEyebrow(for item: MediaItem?) -> String {
         guard let item else { return "SPORTS & EVENTS" }
-        if item.isPlayable { return "LIVE & ON DEMAND" }
+        if item.sportsPlaybackAvailable(at: Date()) { return "LIVE & ON DEMAND" }
         return item.sportsEvent?.league?.uppercased() ?? "UPCOMING"
+    }
+
+    private func unavailableActionTitle(for item: MediaItem, at date: Date) -> String {
+        switch item.sportsPhase(at: date) {
+        case .completed, .replay:
+            return "GAME COMPLETE"
+        case .live:
+            return "GAME UNDERWAY"
+        case .upcoming:
+            guard let gameTime = item.sportsEvent?.startsAt else { return "UPCOMING" }
+            if let coverageTime = item.sportsCoverageStartsAt, date < coverageTime {
+                return "COVERAGE BEGINS · \(coverageTime.formatted(date: .omitted, time: .shortened))"
+            }
+            return "GAME TIME · \(gameTime.formatted(date: .omitted, time: .shortened))"
+        }
     }
 
     private func otherOptions(for item: MediaItem) -> [MediaItem.PlaybackOption] {
@@ -1890,7 +1998,8 @@ private struct SportsView: View {
     }
 
     private func baseballPrimaryOptions(for item: MediaItem) -> [MediaItem.PlaybackOption] {
-        guard item.categoryID == "baseball" else { return [] }
+        guard item.categoryID == "baseball",
+              item.sportsPlaybackAvailable(at: Date()) else { return [] }
         let playable = item.playbackOptions.filter(isPlayableOption)
         return playable.filter { option in
             let title = option.title.lowercased()
@@ -1917,13 +2026,16 @@ private struct SportsView: View {
     }
 
     private func eventActionDescription(for item: MediaItem) -> String {
-        guard item.isPlayable else { return "stream not available yet" }
+        guard item.sportsPlaybackAvailable(at: Date()) else {
+            return unavailableActionTitle(for: item, at: Date())
+        }
         return baseballPrimaryOptions(for: item).count > 1
             ? "press to choose home or away feed"
             : "press to play"
     }
 
     private func activateEvent(_ item: MediaItem) {
+        guard item.sportsPlaybackAvailable(at: Date()) else { return }
         let baseballFeeds = baseballPrimaryOptions(for: item)
         guard baseballFeeds.count > 1, let firstFeed = baseballFeeds.first else {
             playBest(item)
@@ -1934,6 +2046,7 @@ private struct SportsView: View {
     }
 
     private func playBest(_ item: MediaItem) {
+        guard item.sportsPlaybackAvailable(at: Date()) else { return }
         guard let best = bestOption(for: item) else {
             Task { await model.play(item) }
             return
@@ -1991,14 +2104,14 @@ private struct SportsEventRow: View {
                         .foregroundStyle(LiveTVPalette.mutedText)
                         .lineLimit(1)
                     Spacer()
-                    if item.hasMultiplePlaybackOptions {
+                    if item.sportsPlaybackAvailable(at: Date()) && item.hasMultiplePlaybackOptions {
                         Text("\(item.playbackOptions.count) FEEDS")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .tracking(0.7)
                             .foregroundStyle(LiveTVPalette.accent)
                     } else {
-                        Image(systemName: item.isPlayable ? "play.fill" : "calendar")
-                            .foregroundStyle(item.isPlayable ? LiveTVPalette.accent : LiveTVPalette.mutedText)
+                        Image(systemName: item.sportsPlaybackAvailable(at: Date()) ? "play.fill" : "clock")
+                            .foregroundStyle(item.sportsPlaybackAvailable(at: Date()) ? LiveTVPalette.accent : LiveTVPalette.mutedText)
                     }
                 }
             }

@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 enum SeasonTheme {
-    /// JOE-TV's warm, editorial palette. Volt is reserved for remote focus.
+    /// Joe-TV's warm, editorial palette. Volt is reserved for remote focus.
     static let background = Color(red: 0.031, green: 0.039, blue: 0.051) // #080A0D
     static let paper = Color(red: 0.957, green: 0.949, blue: 0.929) // #F4F2ED
     static let liveSignal = Color(red: 1.0, green: 0.357, blue: 0.208) // #FF5B35

@@ -9,7 +9,7 @@ fi
 token="${MEDIA_READ_TOKEN:-}"
 
 if [ -z "$token" ]; then
-    echo "error: MEDIA_READ_TOKEN is required for Release builds. Supply Config/Private.xcconfig or a CI build setting." >&2
+    echo "error: MEDIA_READ_TOKEN is required for Release builds. Supply a dedicated Internal TestFlight token in Config/Internal.xcconfig or a CI build setting." >&2
     exit 1
 fi
 

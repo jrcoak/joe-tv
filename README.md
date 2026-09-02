@@ -1,4 +1,4 @@
-# SeasonsTV
+# Joe-TV
 
 A native SwiftUI tvOS client for a user's existing Seasons4U membership. The UI is adapted from the website's dark, editorial player design for Siri Remote focus navigation and native `AVPlayer` playback.
 
@@ -22,15 +22,15 @@ For architecture, authentication, parser contracts, FairPlay behavior, design de
 
 ## Run
 
-1. Open `SeasonsTV.xcodeproj` in Xcode 26 or newer.
+1. Open `Joe-TV.xcodeproj` in Xcode 26 or newer.
 2. Choose an Apple TV simulator or a signed Apple TV device target.
-3. Set your Development Team and replace the example bundle identifier if running on hardware.
+3. Set your Development Team. The permanent bundle identifier is `com.jrcoak.joetv`.
 4. Copy `Config/Private.example.xcconfig` to the ignored `Config/Private.xcconfig` and set the private `MEDIA_READ_TOKEN` used by the Personal Media API deployment.
 5. Build and sign in with your Seasons4U account inside the app. Guide and sports metadata load automatically; there is no television pairing flow.
 
 The login screen also offers **Watch Very Local free**. That route uses Very Local's public catalog and playback configuration; no Very Local credentials are requested or stored.
 
-`Config/Private.xcconfig` must never be committed. Release builds fail when the token is missing, shorter than 32 characters, or still a placeholder. Debug builds remain buildable without it and show a configuration-oriented schedule error while preserving Seasons4U playback.
+`Config/Private.xcconfig` must never be committed and is used only by Debug builds. Internal TestFlight archives read `Config/Internal.xcconfig`, which must contain a separate revocable, rate-limited read token and is also git-ignored. Release builds fail when that token is missing, shorter than 32 characters, or still a placeholder. Debug builds remain buildable without their token and show a configuration-oriented schedule error while preserving Seasons4U playback.
 
 ## Architecture notes
 

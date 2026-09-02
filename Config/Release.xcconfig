@@ -1,0 +1,5 @@
+// Internal TestFlight configuration.
+// Internal.xcconfig must contain a dedicated revocable, rate-limited read token.
+
+#include "Shared.xcconfig"
+#include? "Internal.xcconfig"

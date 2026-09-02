@@ -63,9 +63,13 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
 
     init(
         session: URLSession = .shared,
-        defaults: UserDefaults = .standard,
         bundle: Bundle = .main
     ) {
+        // Resolve the process-wide store inside the actor initializer. Passing
+        // UserDefaults as a default argument crosses an isolation boundary and
+        // produces a Swift 6 sendability warning even though UserDefaults itself
+        // provides synchronized access.
+        let defaults = UserDefaults.standard
         self.session = session
         self.defaults = defaults
         do {

@@ -1,0 +1,5 @@
+// Copy this file to Internal.xcconfig before archiving for Internal TestFlight.
+// Use a dedicated revocable, rate-limited, read-only token—not the Debug token.
+// Never commit Internal.xcconfig or the real MEDIA_READ_TOKEN value.
+
+MEDIA_READ_TOKEN =

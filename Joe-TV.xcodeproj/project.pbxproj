@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000001 /* SeasonsTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000001 /* SeasonsTVApp.swift */; };
+		AA0000000000000000000001 /* JoeTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000001 /* JoeTVApp.swift */; };
 		AA0000000000000000000002 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000002 /* AppModel.swift */; };
 		AA0000000000000000000003 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000003 /* Models.swift */; };
 		AA0000000000000000000004 /* SeasonsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000004 /* SeasonsClient.swift */; };
@@ -22,10 +22,11 @@
 		AA0000000000000000000011 /* MediaAPIConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* MediaAPIConfiguration.swift */; };
 		AA0000000000000000000012 /* VeryLocalClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* VeryLocalClient.swift */; };
 		AA0000000000000000000013 /* JoeTVExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* JoeTVExperience.swift */; };
+		AA0000000000000000000014 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000018 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		BB0000000000000000000001 /* SeasonsTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeasonsTVApp.swift; sourceTree = "<group>"; };
+		BB0000000000000000000001 /* JoeTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoeTVApp.swift; sourceTree = "<group>"; };
 		BB0000000000000000000002 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		BB0000000000000000000003 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		BB0000000000000000000004 /* SeasonsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeasonsClient.swift; sourceTree = "<group>"; };
@@ -35,7 +36,7 @@
 		BB0000000000000000000008 /* PlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerScreen.swift; sourceTree = "<group>"; };
 		BB0000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		BB000000000000000000000B /* SeasonsTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeasonsTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000000000000000000000B /* Joe-TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Joe-TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000000000000000000000C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		BB000000000000000000000D /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		BB000000000000000000000E /* ChannelDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelDirectory.swift; sourceTree = "<group>"; };
@@ -45,6 +46,10 @@
 		BB0000000000000000000012 /* Private.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Private.example.xcconfig; sourceTree = "<group>"; };
 		BB0000000000000000000013 /* VeryLocalClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VeryLocalClient.swift; sourceTree = "<group>"; };
 		BB0000000000000000000014 /* JoeTVExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoeTVExperience.swift; sourceTree = "<group>"; };
+		BB0000000000000000000015 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000016 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000017 /* Internal.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Internal.example.xcconfig; sourceTree = "<group>"; };
+		BB0000000000000000000018 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,14 +66,14 @@
 		CC0000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				CC0000000000000000000002 /* SeasonsTV */,
+				CC0000000000000000000002 /* Joe-TV */,
 				CC000000000000000000000A /* Config */,
 				BB000000000000000000000C /* README.md */,
 				CC0000000000000000000008 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		CC0000000000000000000002 /* SeasonsTV */ = {
+		CC0000000000000000000002 /* Joe-TV */ = {
 			isa = PBXGroup;
 			children = (
 				CC0000000000000000000003 /* App */,
@@ -78,13 +83,14 @@
 				CC0000000000000000000007 /* Views */,
 				CC0000000000000000000009 /* Resources */,
 			);
+			name = "Joe-TV";
 			path = SeasonsTV;
 			sourceTree = "<group>";
 		};
 		CC0000000000000000000003 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				BB0000000000000000000001 /* SeasonsTVApp.swift */,
+				BB0000000000000000000001 /* JoeTVApp.swift */,
 				BB0000000000000000000002 /* AppModel.swift */,
 			);
 			path = App;
@@ -133,7 +139,7 @@
 		CC0000000000000000000008 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BB000000000000000000000B /* SeasonsTV.app */,
+				BB000000000000000000000B /* Joe-TV.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -143,6 +149,7 @@
 			children = (
 				BB0000000000000000000009 /* Assets.xcassets */,
 				BB000000000000000000000A /* Info.plist */,
+				BB0000000000000000000018 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -151,7 +158,10 @@
 			isa = PBXGroup;
 			children = (
 				BB0000000000000000000011 /* Shared.xcconfig */,
+				BB0000000000000000000015 /* Debug.xcconfig */,
+				BB0000000000000000000016 /* Release.xcconfig */,
 				BB0000000000000000000012 /* Private.example.xcconfig */,
+				BB0000000000000000000017 /* Internal.example.xcconfig */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -159,9 +169,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		EE0000000000000000000001 /* SeasonsTV */ = {
+		EE0000000000000000000001 /* Joe-TV */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C30000000000000000000001 /* Build configuration list for PBXNativeTarget "SeasonsTV" */;
+			buildConfigurationList = C30000000000000000000001 /* Build configuration list for PBXNativeTarget "Joe-TV" */;
 			buildPhases = (
 				FF0000000000000000000004 /* Validate Media API Configuration */,
 				FF0000000000000000000002 /* Sources */,
@@ -172,9 +182,9 @@
 			);
 			dependencies = (
 			);
-			name = SeasonsTV;
-			productName = SeasonsTV;
-			productReference = BB000000000000000000000B /* SeasonsTV.app */;
+			name = "Joe-TV";
+			productName = "Joe-TV";
+			productReference = BB000000000000000000000B /* Joe-TV.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -192,7 +202,7 @@
 					};
 				};
 			};
-			buildConfigurationList = C30000000000000000000002 /* Build configuration list for PBXProject "SeasonsTV" */;
+			buildConfigurationList = C30000000000000000000002 /* Build configuration list for PBXProject "Joe-TV" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -205,7 +215,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				EE0000000000000000000001 /* SeasonsTV */,
+				EE0000000000000000000001 /* Joe-TV */,
 			);
 		};
 /* End PBXProject section */
@@ -216,6 +226,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000010 /* Assets.xcassets in Resources */,
+				AA0000000000000000000014 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,7 +259,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0000000000000000000001 /* SeasonsTVApp.swift in Sources */,
+				AA0000000000000000000001 /* JoeTVApp.swift in Sources */,
 				AA0000000000000000000002 /* AppModel.swift in Sources */,
 				AA0000000000000000000003 /* Models.swift in Sources */,
 				AA0000000000000000000004 /* SeasonsClient.swift in Sources */,
@@ -270,15 +281,17 @@
 /* Begin XCBuildConfiguration section */
 		C10000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = BB0000000000000000000011 /* Shared.xcconfig */;
+			baseConfigurationReference = BB0000000000000000000015 /* Debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = JTM69DV573;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeasonsTV/Resources/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.SeasonsTV;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jrcoak.joetv;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
@@ -291,15 +304,17 @@
 		};
 		C10000000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = BB0000000000000000000011 /* Shared.xcconfig */;
+			baseConfigurationReference = BB0000000000000000000016 /* Release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = JTM69DV573;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeasonsTV/Resources/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.SeasonsTV;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jrcoak.joetv;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
@@ -401,7 +416,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C30000000000000000000001 /* Build configuration list for PBXNativeTarget "SeasonsTV" */ = {
+		C30000000000000000000001 /* Build configuration list for PBXNativeTarget "Joe-TV" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C10000000000000000000001 /* Debug */,
@@ -410,7 +425,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C30000000000000000000002 /* Build configuration list for PBXProject "SeasonsTV" */ = {
+		C30000000000000000000002 /* Build configuration list for PBXProject "Joe-TV" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C20000000000000000000001 /* Debug */,

@@ -4,20 +4,22 @@ import SwiftUI
 
 struct JoeTVHomeView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var lastFocusedFavoriteID: String?
     @FocusState private var focusedID: String?
     let entryFocusRequest: Int
     let onFocusNavigation: () -> Void
 
     private var guideWindow: EPGGuideWindow? { model.epgState.usableWindow }
+    private let heroTitleWidth: CGFloat = 720
+    private let heroDescriptionWidth: CGFloat = 600
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             GeometryReader { geometry in
-                let event = featuredEvent(at: context.date)
                 let channel = featuredChannel(at: context.date)
 
                 ZStack(alignment: .bottomLeading) {
-                    JoeTVHeroBackdrop(event: event, channel: event == nil ? channel : nil)
+                    JoeTVHeroBackdrop(event: nil, channel: channel)
                         .frame(width: geometry.size.width, height: geometry.size.height)
 
                     LinearGradient(
@@ -32,7 +34,7 @@ struct JoeTVHomeView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         Spacer(minLength: 100)
-                        heroCopy(event: event, channel: channel, at: context.date)
+                        heroCopy(channel: channel, at: context.date)
                         Spacer(minLength: 30)
                         nowAndNext(at: context.date)
                     }
@@ -44,50 +46,16 @@ struct JoeTVHomeView: View {
         .background(SeasonTheme.background)
         .onAppear { restoreFocus() }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
+        .onChange(of: focusedID) { _, identifier in
+            guard let identifier, identifier.hasPrefix("channel:") else { return }
+            lastFocusedFavoriteID = String(identifier.dropFirst("channel:".count))
+        }
         .onExitCommand { onFocusNavigation() }
     }
 
     @ViewBuilder
-    private func heroCopy(event: MediaItem?, channel: LiveChannel?, at date: Date) -> some View {
-        if let event {
-            VStack(alignment: .leading, spacing: 15) {
-                JoeTVEventEyebrow(item: event, date: date)
-                Text(event.title)
-                    .font(.system(size: 68, weight: .regular, design: .serif))
-                    .foregroundStyle(SeasonTheme.paper)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.75)
-                    .frame(maxWidth: 860, alignment: .leading)
-
-                if let sportsEvent = event.sportsEvent {
-                    JoeTVScoreLine(event: sportsEvent, compact: false)
-                }
-
-                Text(event.subtitle ?? "Available to watch now")
-                    .font(.system(size: 21, weight: .regular))
-                    .foregroundStyle(SeasonTheme.secondaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 14) {
-                    Button {
-                        playBest(event)
-                    } label: {
-                        Label("Watch live", systemImage: "play.fill")
-                    }
-                    .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
-                    .focused($focusedID, equals: "hero-watch")
-
-                    Button {
-                        model.destination = .sports
-                    } label: {
-                        Label("Open Sports", systemImage: "sportscourt")
-                    }
-                    .buttonStyle(JoeTVActionButtonStyle(isPrimary: false))
-                    .focused($focusedID, equals: "hero-sports")
-                }
-                .padding(.top, 4)
-            }
-        } else if let channel {
+    private func heroCopy(channel: LiveChannel?, at date: Date) -> some View {
+        if let channel {
             let program = nowPlaying(on: channel, at: date)
             VStack(alignment: .leading, spacing: 15) {
                 JoeTVLiveEyebrow(text: channel.name)
@@ -96,14 +64,14 @@ struct JoeTVHomeView: View {
                     .foregroundStyle(SeasonTheme.paper)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
-                    .frame(maxWidth: 900, alignment: .leading)
+                    .frame(width: heroTitleWidth, alignment: .leading)
 
                 if let synopsis = program?.synopsis, !synopsis.isEmpty {
                     Text(synopsis)
                         .font(.system(size: 20))
                         .foregroundStyle(SeasonTheme.secondaryText)
                         .lineLimit(2)
-                        .frame(maxWidth: 790, alignment: .leading)
+                        .frame(width: heroDescriptionWidth, alignment: .leading)
                 }
 
                 HStack(spacing: 14) {
@@ -112,15 +80,38 @@ struct JoeTVHomeView: View {
                     }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                     .focused($focusedID, equals: "hero-watch")
+                    .onKeyPress(.upArrow) {
+                        onFocusNavigation()
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        focusFavoriteRail()
+                        return .handled
+                    }
+                    .onMoveCommand(perform: handleHeroMove)
 
                     Button { model.destination = .liveTV } label: {
                         Label("Open guide", systemImage: "rectangle.grid.1x2")
                     }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: false))
                     .focused($focusedID, equals: "hero-guide")
+                    .onKeyPress(.upArrow) {
+                        onFocusNavigation()
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        focusFavoriteRail()
+                        return .handled
+                    }
+                    .onMoveCommand(perform: handleHeroMove)
                 }
                 .padding(.top, 4)
             }
+            // Make the whole hero band a focus destination above the horizontal rail.
+            // Without this guide, tvOS can briefly choose the full-width navigation bar
+            // before the explicit Favorites → hero redirect takes effect.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focusSection()
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 Text("LIVE TELEVISION, ALIVE")
@@ -135,14 +126,20 @@ struct JoeTVHomeView: View {
                 }
                 .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                 .focused($focusedID, equals: "hero-guide")
+                .onKeyPress(.upArrow) {
+                    onFocusNavigation()
+                    return .handled
+                }
+                .onMoveCommand(perform: handleHeroMove)
             }
         }
     }
 
     private func nowAndNext(at date: Date) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let favoriteChannels = model.favoriteLiveChannels
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Text("NOW & NEXT")
+                Text("FAVORITES")
                     .font(.system(size: 14, weight: .bold))
                     .tracking(1.8)
                     .foregroundStyle(SeasonTheme.paper)
@@ -155,47 +152,67 @@ struct JoeTVHomeView: View {
                     .foregroundStyle(SeasonTheme.secondaryText)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            if favoriteChannels.isEmpty {
                 HStack(spacing: 12) {
-                    ForEach(Array(model.liveChannels.prefix(7))) { channel in
-                        Button { Task { await model.play(channel) } } label: {
-                            JoeTVNowCard(
-                                channel: channel,
-                                program: nowPlaying(on: channel, at: date),
-                                next: nextProgram(on: channel, at: date),
-                                date: date
-                            )
-                        }
-                        .buttonStyle(JoeTVCardButtonStyle())
-                        .focused($focusedID, equals: "channel:\(channel.id)")
+                    Image(systemName: "star")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(SeasonTheme.secondaryText)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No favorite channels yet")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(SeasonTheme.paper)
+                        Text("Choose favorites in Settings → Channels.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(SeasonTheme.secondaryText)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.horizontal, 18)
+                .frame(height: 128)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.black.opacity(0.42))
+                .overlay { RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline) }
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(favoriteChannels) { channel in
+                            Button { Task { await model.play(channel) } } label: {
+                                JoeTVNowCard(
+                                    channel: channel,
+                                    program: nowPlaying(on: channel, at: date),
+                                    next: nextProgram(on: channel, at: date),
+                                    date: date
+                                )
+                            }
+                            .buttonStyle(JoeTVCardButtonStyle())
+                            .focused($focusedID, equals: "channel:\(channel.id)")
+                            .onKeyPress(.upArrow) {
+                                focusPrimaryHero()
+                                return .handled
+                            }
+                            .onMoveCommand { direction in
+                                if direction == .up { focusPrimaryHero() }
+                            }
+                        }
+                    }
+                    // Focused tvOS cards scale beyond their nominal frame. Keep a focus-safe
+                    // gutter inside the scroll content so the first and last outlines are not clipped.
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
             }
         }
     }
 
-    private func featuredEvent(at date: Date) -> MediaItem? {
-        let items = uniqueSportsItems
-        return items.first(where: { $0.isPlayable && $0.sportsPhase(at: date) == .live })
-            ?? items.first(where: { item in
-                guard item.isPlayable, let start = item.sportsEvent?.startsAt else { return false }
-                return start > date && start.timeIntervalSince(date) < 3 * 3_600
-            })
-    }
-
     private func featuredChannel(at date: Date) -> LiveChannel? {
-        model.liveChannels.first(where: { nowPlaying(on: $0, at: date) != nil })
+        let favorites = model.favoriteLiveChannels
+        if let lastFocusedFavoriteID,
+           let focusedFavorite = favorites.first(where: { $0.id == lastFocusedFavoriteID }) {
+            return focusedFavorite
+        }
+        return favorites.first
+            ?? model.liveChannels.first(where: { nowPlaying(on: $0, at: date) != nil })
             ?? model.liveChannels.first
-    }
-
-    private var uniqueSportsItems: [MediaItem] {
-        var seen = Set<String>()
-        return model.visibleSportsCategories
-            .flatMap(\.items)
-            .filter { !$0.isGenericSportsChannelShortcut }
-            .filter { seen.insert($0.id).inserted }
-            .sorted { ($0.sportsEvent?.startsAt ?? .distantFuture) < ($1.sportsEvent?.startsAt ?? .distantFuture) }
     }
 
     private func nowPlaying(on channel: LiveChannel, at date: Date) -> EPGProgram? {
@@ -208,15 +225,35 @@ struct JoeTVHomeView: View {
         return guideWindow?.programsByStationID[station]?.first(where: { $0.start > date })
     }
 
-    private func playBest(_ item: MediaItem) {
-        Task { await model.play(item, option: item.bestPlayableOption) }
+    private func handleHeroMove(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up:
+            onFocusNavigation()
+        case .down:
+            focusFavoriteRail()
+        default:
+            break
+        }
+    }
+
+    private func focusPrimaryHero() {
+        focusedID = !model.liveChannels.isEmpty
+            ? "hero-watch"
+            : "hero-guide"
+    }
+
+    private func focusFavoriteRail() {
+        let favorites = model.favoriteLiveChannels
+        guard !favorites.isEmpty else { return }
+        let targetID = lastFocusedFavoriteID.flatMap { previousID in
+            favorites.contains(where: { $0.id == previousID }) ? previousID : nil
+        } ?? favorites[0].id
+        focusedID = "channel:\(targetID)"
     }
 
     private func restoreFocus() {
         DispatchQueue.main.async {
-            focusedID = featuredEvent(at: Date()) != nil || !model.liveChannels.isEmpty
-                ? "hero-watch"
-                : "hero-guide"
+            focusPrimaryHero()
         }
     }
 }
@@ -797,21 +834,22 @@ struct JoeTVSportsView: View {
                     }
 
                     HStack(spacing: 12) {
-                        if item.shouldPresentSportsPlaybackSelector {
+                        if item.sportsPlaybackAvailable(at: date) && item.shouldPresentSportsPlaybackSelector {
                             Button { broadcastItem = item } label: {
                                 Label("Choose stream", systemImage: "dot.radiowaves.left.and.right")
                             }
                             .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                             .focused($focusedID, equals: "feature-watch")
-                        } else if item.isPlayable {
+                        } else if item.sportsPlaybackAvailable(at: date) {
                             Button { playBest(item) } label: {
                                 Label(playActionTitle(for: item, at: date), systemImage: "play.fill")
                             }
                             .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                             .focused($focusedID, equals: "feature-watch")
                         } else {
-                            Label(unavailableActionTitle(for: item, at: date), systemImage: "calendar")
-                                .font(.headline)
+                            Label(unavailableActionTitle(for: item, at: date), systemImage: "clock")
+                                .font(.system(size: 17, weight: .semibold, design: .monospaced))
+                                .tracking(0.7)
                                 .foregroundStyle(SeasonTheme.secondaryText)
                         }
                     }
@@ -881,22 +919,21 @@ struct JoeTVSportsView: View {
     }
 
     private func scheduleRailItems(at date: Date) -> [MediaItem] {
-        let nearTerm = laterTodayItems(at: date) + tomorrowItems(at: date)
-        if !nearTerm.isEmpty { return nearTerm }
+        let today = laterTodayItems(at: date)
+        if !today.isEmpty { return today }
+        let tomorrow = tomorrowItems(at: date)
+        if !tomorrow.isEmpty { return tomorrow }
         return items.filter { $0.sportsPhase(at: date) == .upcoming }
     }
 
     private func scheduleRailTitle(at date: Date) -> String {
-        let hasToday = !laterTodayItems(at: date).isEmpty
-        let hasTomorrow = !tomorrowItems(at: date).isEmpty
-        if hasToday && hasTomorrow { return "LATER TODAY & TOMORROW" }
-        if hasToday { return "LATER TODAY" }
-        if hasTomorrow { return "TOMORROW" }
+        if !laterTodayItems(at: date).isEmpty { return "LATER TODAY" }
+        if !tomorrowItems(at: date).isEmpty { return "TOMORROW" }
         return "UP NEXT"
     }
 
     private func featuredItem(at date: Date) -> MediaItem? {
-        liveItems(at: date).first(where: \.isPlayable)
+        liveItems(at: date).first(where: { $0.sportsPlaybackAvailable(at: date) })
             ?? liveItems(at: date).first
             ?? scheduleRailItems(at: date).first
     }
@@ -916,6 +953,7 @@ struct JoeTVSportsView: View {
 
     private func activate(_ item: MediaItem) {
         selectedItemID = item.id
+        guard item.sportsPlaybackAvailable(at: Date()) else { return }
         if item.shouldPresentSportsPlaybackSelector {
             broadcastItem = item
         } else if item.isPlayable {
@@ -924,6 +962,7 @@ struct JoeTVSportsView: View {
     }
 
     private func playBest(_ item: MediaItem) {
+        guard item.sportsPlaybackAvailable(at: Date()) else { return }
         Task { await model.play(item, option: item.bestPlayableOption) }
     }
 
@@ -932,7 +971,18 @@ struct JoeTVSportsView: View {
     }
 
     private func unavailableActionTitle(for item: MediaItem, at date: Date) -> String {
-        item.sportsPhase(at: date) == .completed ? "Game complete" : "Stream not published yet"
+        switch item.sportsPhase(at: date) {
+        case .completed, .replay:
+            return "GAME COMPLETE"
+        case .live:
+            return "GAME UNDERWAY"
+        case .upcoming:
+            guard let gameTime = item.sportsEvent?.startsAt else { return "UPCOMING" }
+            if let coverageTime = item.sportsCoverageStartsAt, date < coverageTime {
+                return "COVERAGE BEGINS · \(coverageTime.formatted(date: .omitted, time: .shortened))"
+            }
+            return "GAME TIME · \(gameTime.formatted(date: .omitted, time: .shortened))"
+        }
     }
 
     private func focusLiveItem(aboveRailIndex index: Int, at date: Date) {
@@ -941,7 +991,7 @@ struct JoeTVSportsView: View {
             selectedItemID = target.id
             model.focusSportsEvent(target.sportsEvent)
             focusedID = "live:\(target.id)"
-        } else if featuredItem(at: date)?.isPlayable == true {
+        } else if featuredItem(at: date)?.sportsPlaybackAvailable(at: date) == true {
             focusedID = "feature-watch"
         }
     }
@@ -950,7 +1000,7 @@ struct JoeTVSportsView: View {
         let feature = featuredItem(at: Date())
         selectedItemID = feature?.id
         DispatchQueue.main.async {
-            if feature?.isPlayable == true {
+            if feature?.sportsPlaybackAvailable(at: Date()) == true {
                 focusedID = "feature-watch"
             } else if let live = liveItems(at: Date()).first {
                 focusedID = "live:\(live.id)"
@@ -970,11 +1020,378 @@ struct JoeTVSportsView: View {
         let baseball = liveBaseball.first(where: {
             let groupIDs = Set($0.sportsBroadcastGroups.map(\.id))
             return groupIDs.contains("home") && groupIDs.contains("away")
-        }) ?? liveBaseball.first(where: \.isPlayable)
+        }) ?? liveBaseball.first(where: { $0.sportsPlaybackAvailable(at: Date()) })
         guard let baseball else { return }
         selectedItemID = baseball.id
         broadcastItem = baseball
         #endif
+    }
+}
+
+// MARK: - ESPN+ calendar
+
+struct JoeTVESPNPlusView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var scope: Scope = .usOpen
+    @State private var showsDatePicker = false
+    @FocusState private var focusedID: String?
+    let entryFocusRequest: Int
+    let onFocusNavigation: () -> Void
+
+    private enum Scope: String {
+        case usOpen = "US Open"
+        case all = "All Events"
+    }
+
+    private var usOpenItems: [MediaItem] {
+        model.espnPlusItems.filter { item in
+            item.title.localizedCaseInsensitiveContains("US Open") ||
+                (item.subtitle?.localizedCaseInsensitiveContains("US Open") == true)
+        }
+    }
+
+    private var isShowingUSOpen: Bool {
+        scope == .usOpen && !usOpenItems.isEmpty
+    }
+
+    private var displayedItems: [MediaItem] {
+        isShowingUSOpen ? usOpenItems : model.espnPlusItems
+    }
+
+    private var isToday: Bool {
+        Calendar.current.isDateInToday(model.espnPlusDate)
+    }
+
+    private var liveCount: Int {
+        displayedItems.filter { $0.sportsPhase(at: Date()) == .live }.count
+    }
+
+    private var replayCount: Int {
+        displayedItems.filter { $0.sportsPhase(at: Date()) == .replay }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            dateControls
+
+            if let error = model.espnPlusState.errorMessage {
+                InlineStatusBanner(message: "ESPN+ could not be refreshed. \(error)") {
+                    Task { await model.loadESPNPlus(for: model.espnPlusDate) }
+                }
+            }
+
+            content
+        }
+        .padding(.horizontal, SeasonTheme.horizontalInset)
+        .padding(.top, 18)
+        .padding(.bottom, 18)
+        .background(SeasonTheme.background)
+        .sheet(isPresented: $showsDatePicker) {
+            JoeTVESPNPlusDatePicker(selectedDate: model.espnPlusDate) { date in
+                showsDatePicker = false
+                Task { await model.loadESPNPlus(for: date) }
+            }
+        }
+        .onAppear {
+            restoreFocus()
+            if model.espnPlusState == .idle {
+                Task { await model.loadESPNPlus() }
+            }
+        }
+        .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
+        .onExitCommand { onFocusNavigation() }
+    }
+
+    private var header: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ESPN+")
+                    .font(.system(size: 13, weight: .bold))
+                    .tracking(1.8)
+                    .foregroundStyle(SeasonTheme.liveSignal)
+                Text(isToday ? "Today" : model.espnPlusDate.formatted(.dateTime.weekday(.wide)))
+                    .font(.system(size: 42, weight: .regular, design: .serif))
+                    .foregroundStyle(SeasonTheme.paper)
+                Text(model.espnPlusDate, format: .dateTime.month(.wide).day().year())
+                    .font(.system(size: 15))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
+            Spacer()
+            if !displayedItems.isEmpty {
+                Text("\(liveCount) live  ·  \(replayCount) replay")
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
+        }
+    }
+
+    private var dateControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                Task { await model.moveESPNPlusDate(by: -1) }
+            } label: {
+                Label("Previous day", systemImage: "chevron.left")
+            }
+            .buttonStyle(JoeTVCompactButtonStyle(isPrimary: false))
+            .focused($focusedID, equals: "previous-day")
+            .onKeyPress(.upArrow) {
+                onFocusNavigation()
+                return .handled
+            }
+
+            Button {
+                showsDatePicker = true
+            } label: {
+                Label(
+                    model.espnPlusDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()),
+                    systemImage: "calendar"
+                )
+            }
+            .buttonStyle(JoeTVCompactButtonStyle(isPrimary: true))
+            .focused($focusedID, equals: "choose-date")
+            .onKeyPress(.upArrow) {
+                onFocusNavigation()
+                return .handled
+            }
+
+            Button {
+                Task { await model.moveESPNPlusDate(by: 1) }
+            } label: {
+                Label("Next day", systemImage: "chevron.right")
+            }
+            .buttonStyle(JoeTVCompactButtonStyle(isPrimary: false))
+            .focused($focusedID, equals: "next-day")
+            .onKeyPress(.upArrow) {
+                onFocusNavigation()
+                return .handled
+            }
+
+            if !isToday {
+                Button("Today") {
+                    Task { await model.loadESPNPlus(for: Date()) }
+                }
+                .buttonStyle(JoeTVCompactButtonStyle(isPrimary: false))
+                .focused($focusedID, equals: "today")
+                .onKeyPress(.upArrow) {
+                    onFocusNavigation()
+                    return .handled
+                }
+            }
+
+            Spacer()
+
+            if !usOpenItems.isEmpty {
+                Button("US Open") { scope = .usOpen }
+                    .buttonStyle(FocusPillButtonStyle(isSelected: isShowingUSOpen))
+                    .focused($focusedID, equals: "scope-us-open")
+                Button("All Events") { scope = .all }
+                    .buttonStyle(FocusPillButtonStyle(isSelected: !isShowingUSOpen))
+                    .focused($focusedID, equals: "scope-all")
+            }
+        }
+        .focusSection()
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.espnPlusState {
+        case .idle, .loading:
+            VStack(spacing: 18) {
+                ProgressView()
+                Text("Loading ESPN+ for \(model.espnPlusDate.formatted(date: .abbreviated, time: .omitted))…")
+                    .font(.title3)
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed where model.espnPlusItems.isEmpty:
+            StatePanel(
+                title: "ESPN+ unavailable",
+                message: model.espnPlusState.errorMessage ?? "Joe-TV could not load this date.",
+                symbol: "wifi.exclamationmark",
+                actionTitle: "Try again"
+            ) { Task { await model.loadESPNPlus(for: model.espnPlusDate) } }
+        case .loaded, .failed:
+            if displayedItems.isEmpty {
+                StatePanel(
+                    title: "Nothing scheduled",
+                    message: "Seasons4U has not published any ESPN+ events for this date.",
+                    symbol: "calendar.badge.clock",
+                    actionTitle: isToday ? "Refresh" : "Return to Today"
+                ) {
+                    Task {
+                        await model.loadESPNPlus(for: isToday ? model.espnPlusDate : Date())
+                    }
+                }
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4),
+                        spacing: 16
+                    ) {
+                        ForEach(displayedItems) { item in
+                            Button {
+                                Task { await model.play(item) }
+                            } label: {
+                                JoeTVESPNPlusCard(item: item)
+                            }
+                            .buttonStyle(JoeTVCardButtonStyle())
+                            .focused($focusedID, equals: "event:\(item.id)")
+                        }
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 7)
+                }
+                .focusSection()
+            }
+        }
+    }
+
+    private func restoreFocus() {
+        DispatchQueue.main.async { focusedID = "previous-day" }
+    }
+}
+
+private struct JoeTVESPNPlusCard: View {
+    let item: MediaItem
+
+    private var phase: SportsEventPhase {
+        item.sportsPhase(at: Date())
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            JoeTVSportsBackdrop(item: item)
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.3), Color.black.opacity(0.96)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(phase == .replay ? "REPLAY" : "LIVE")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(phase == .replay ? SeasonTheme.paper.opacity(0.72) : SeasonTheme.liveSignal)
+                Text(item.title)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(SeasonTheme.paper)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                Text(item.subtitle ?? "ESPN+")
+                    .font(.system(size: 12))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+                    .lineLimit(1)
+            }
+            .padding(16)
+        }
+        .frame(height: 188)
+        .background(SeasonTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline) }
+    }
+}
+
+private struct JoeTVESPNPlusDatePicker: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftDate: Date
+    @State private var displayedMonth: Date
+    let apply: (Date) -> Void
+    private let calendar = Calendar.current
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 7)
+
+    init(selectedDate: Date, apply: @escaping (Date) -> Void) {
+        _draftDate = State(initialValue: selectedDate)
+        let components = Calendar.current.dateComponents([.year, .month], from: selectedDate)
+        _displayedMonth = State(initialValue: Calendar.current.date(from: components) ?? selectedDate)
+        self.apply = apply
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Choose an ESPN+ date")
+                .font(.system(size: 42, weight: .regular, design: .serif))
+                .foregroundStyle(SeasonTheme.paper)
+            Text("Joe-TV will replace the current list with the live and replay catalog for that day.")
+                .font(.title3)
+                .foregroundStyle(SeasonTheme.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                Button {
+                    moveMonth(by: -1)
+                } label: {
+                    Label("Previous month", systemImage: "chevron.left")
+                }
+                .buttonStyle(JoeTVCompactButtonStyle(isPrimary: false))
+
+                Spacer()
+                Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
+                    .font(.system(size: 28, weight: .semibold, design: .serif))
+                    .foregroundStyle(SeasonTheme.paper)
+                Spacer()
+
+                Button {
+                    moveMonth(by: 1)
+                } label: {
+                    Label("Next month", systemImage: "chevron.right")
+                }
+                .buttonStyle(JoeTVCompactButtonStyle(isPrimary: false))
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(calendar.shortStandaloneWeekdaySymbols, id: \.self) { weekday in
+                    Text(weekday.uppercased())
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SeasonTheme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                }
+
+                ForEach(Array(monthSlots.enumerated()), id: \.offset) { _, date in
+                    if let date {
+                        Button {
+                            draftDate = date
+                        } label: {
+                            Text(date.formatted(.dateTime.day()))
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(FocusPillButtonStyle(
+                            isSelected: calendar.isDate(date, inSameDayAs: draftDate)
+                        ))
+                    } else {
+                        Color.clear.frame(height: 48)
+                    }
+                }
+            }
+
+            HStack(spacing: 14) {
+                Button("Show this date") { apply(draftDate) }
+                    .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(JoeTVActionButtonStyle(isPrimary: false))
+            }
+        }
+        .padding(48)
+        .frame(width: 920, height: 720, alignment: .topLeading)
+        .background(SeasonTheme.background)
+    }
+
+    private var monthSlots: [Date?] {
+        guard let dayRange = calendar.range(of: .day, in: .month, for: displayedMonth),
+              let firstDay = calendar.date(
+                from: calendar.dateComponents([.year, .month], from: displayedMonth)
+              ) else { return [] }
+        let leadingBlanks = max(0, calendar.component(.weekday, from: firstDay) - 1)
+        return Array(repeating: nil, count: leadingBlanks) + dayRange.compactMap { day in
+            calendar.date(byAdding: .day, value: day - 1, to: firstDay)
+        }.map(Optional.some)
+    }
+
+    private func moveMonth(by offset: Int) {
+        guard let month = calendar.date(byAdding: .month, value: offset, to: displayedMonth) else { return }
+        displayedMonth = month
     }
 }
 
@@ -1156,7 +1573,7 @@ private struct JoeTVBroadcastSelector: View {
             return "\(selectedGroup.title) has both the live point and a DVR start-over feed."
         }
         return groups.count > 1
-            ? "Pick Home or Away first. If that feed offers DVR, JOE-TV will ask where to begin."
+            ? "Pick Home or Away first. If that feed offers DVR, Joe-TV will ask where to begin."
             : "Choose the available feed for this event."
     }
 

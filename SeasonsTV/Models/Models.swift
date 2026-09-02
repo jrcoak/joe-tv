@@ -92,6 +92,7 @@ struct MediaItem: Identifiable {
     let categoryID: String
     let playbackOptions: [PlaybackOption]
     let sportsEvent: SportsScheduleEvent?
+    let providerEventDateCode: String?
 
     init(
         id: String,
@@ -100,7 +101,8 @@ struct MediaItem: Identifiable {
         imageURL: URL?,
         categoryID: String,
         playback: Playback,
-        sportsEvent: SportsScheduleEvent? = nil
+        sportsEvent: SportsScheduleEvent? = nil,
+        providerEventDateCode: String? = nil
     ) {
         self.init(
             id: id,
@@ -109,7 +111,8 @@ struct MediaItem: Identifiable {
             imageURL: imageURL,
             categoryID: categoryID,
             playbackOptions: [PlaybackOption(id: "default", title: "Watch", playback: playback)],
-            sportsEvent: sportsEvent
+            sportsEvent: sportsEvent,
+            providerEventDateCode: providerEventDateCode
         )
     }
 
@@ -120,7 +123,8 @@ struct MediaItem: Identifiable {
         imageURL: URL?,
         categoryID: String,
         playbackOptions: [PlaybackOption],
-        sportsEvent: SportsScheduleEvent? = nil
+        sportsEvent: SportsScheduleEvent? = nil,
+        providerEventDateCode: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -128,6 +132,7 @@ struct MediaItem: Identifiable {
         self.imageURL = imageURL
         self.categoryID = categoryID
         self.sportsEvent = sportsEvent
+        self.providerEventDateCode = providerEventDateCode
         self.playbackOptions = playbackOptions.isEmpty
             ? [PlaybackOption(id: "unavailable", title: "Unavailable", playback: .unavailable)]
             : playbackOptions
@@ -154,6 +159,8 @@ enum SportsEventPhase: Equatable {
 }
 
 extension MediaItem {
+    static let sportsCoverageLeadTime: TimeInterval = 15 * 60
+
     var isGenericSportsChannelShortcut: Bool {
         let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.hasPrefix("espn") && normalized.contains("use direct link") { return true }
@@ -189,6 +196,17 @@ extension MediaItem {
             return .live
         }
         return isPlayable ? .replay : .completed
+    }
+
+    func sportsPlaybackAvailable(at date: Date) -> Bool {
+        guard isPlayable else { return false }
+        guard let sportsEvent else { return true }
+        guard sportsPhase(at: date) == .upcoming else { return true }
+        return date >= sportsEvent.startsAt.addingTimeInterval(-Self.sportsCoverageLeadTime)
+    }
+
+    var sportsCoverageStartsAt: Date? {
+        sportsEvent?.startsAt.addingTimeInterval(-Self.sportsCoverageLeadTime)
     }
 
     private static func containsCompletionSignal(_ value: String) -> Bool {
@@ -571,23 +589,40 @@ final class PlaybackSession: ObservableObject, Identifiable {
 
     private func monitor(_ item: AVPlayerItem) {
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-            DispatchQueue.main.async {
-                switch item.status {
-                case .readyToPlay:
-                    self?.isReady = true
-                    self?.preparationTimeout?.cancel()
-                case .failed:
-                    self?.isReady = false
-                    self?.playbackError = "This stream could not be played. Return to browse and try again."
-                    #if DEBUG
-                    if let error = item.error as NSError? {
-                        print("AVPlayer item failed [\(error.domain) \(error.code)]")
-                    }
-                    #endif
-                default:
-                    self?.isReady = false
-                }
+            let statusRawValue = item.status.rawValue
+            let error = item.error as NSError?
+            let errorDomain = error?.domain
+            let errorCode = error?.code
+
+            Task { @MainActor [weak self] in
+                self?.handlePlayerStatus(
+                    rawValue: statusRawValue,
+                    errorDomain: errorDomain,
+                    errorCode: errorCode
+                )
             }
+        }
+    }
+
+    private func handlePlayerStatus(
+        rawValue: Int,
+        errorDomain: String?,
+        errorCode: Int?
+    ) {
+        switch AVPlayerItem.Status(rawValue: rawValue) {
+        case .readyToPlay:
+            isReady = true
+            preparationTimeout?.cancel()
+        case .failed:
+            isReady = false
+            playbackError = "This stream could not be played. Return to browse and try again."
+            #if DEBUG
+            if let errorDomain, let errorCode {
+                print("AVPlayer item failed [\(errorDomain) \(errorCode)]")
+            }
+            #endif
+        default:
+            isReady = false
         }
     }
 
@@ -623,7 +658,7 @@ enum SeasonsError: LocalizedError {
         case .invalidCredentials:
             return "That email or password was not accepted."
         case .invalidResponse:
-            return "Seasons4U returned an unexpected response."
+            return "There was an unexpected response."
         case .emptyCatalog:
             return "No playable events or channels were found."
         case .streamUnavailable:
