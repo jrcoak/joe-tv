@@ -578,26 +578,37 @@ final class PlaybackSession: ObservableObject, Identifiable {
     let player: AVPlayer
     @Published private(set) var playbackError: String?
     @Published private(set) var isReady = false
+    private let startAtLiveEdge: Bool
     private let resourceLoader: FairPlayResourceLoader?
     private var statusObservation: NSKeyValueObservation?
     private var preparationTimeout: Task<Void, Never>?
+    private var didPositionAtLiveEdge = false
 
-    init(title: String, url: URL) {
+    init(title: String, url: URL, startAtLiveEdge: Bool = false) {
         self.title = title
+        self.startAtLiveEdge = startAtLiveEdge
         let item = AVPlayerItem(url: url)
+        item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
         self.player = AVPlayer(playerItem: item)
         self.resourceLoader = nil
         monitor(item)
         startPreparationTimeout()
     }
 
-    init(title: String, configuration: DRMConfiguration, client: SeasonsClient) {
+    init(
+        title: String,
+        configuration: DRMConfiguration,
+        client: SeasonsClient,
+        startAtLiveEdge: Bool = false
+    ) {
         self.title = title
+        self.startAtLiveEdge = startAtLiveEdge
         let asset = AVURLAsset(url: configuration.hlsURL)
         let loader = FairPlayResourceLoader(configuration: configuration, client: client)
         asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "com.seasonstv.fairplay"))
         self.resourceLoader = loader
         let item = AVPlayerItem(asset: asset)
+        item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
         self.player = AVPlayer(playerItem: item)
         monitor(item)
         startPreparationTimeout()
@@ -627,6 +638,7 @@ final class PlaybackSession: ObservableObject, Identifiable {
     ) {
         switch AVPlayerItem.Status(rawValue: rawValue) {
         case .readyToPlay:
+            positionAtLiveEdgeIfNeeded()
             isReady = true
             preparationTimeout?.cancel()
         case .failed:
@@ -640,6 +652,12 @@ final class PlaybackSession: ObservableObject, Identifiable {
         default:
             isReady = false
         }
+    }
+
+    private func positionAtLiveEdgeIfNeeded() {
+        guard startAtLiveEdge, !didPositionAtLiveEdge else { return }
+        didPositionAtLiveEdge = true
+        player.seek(to: .positiveInfinity)
     }
 
     private func startPreparationTimeout() {

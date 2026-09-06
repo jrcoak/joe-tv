@@ -52,7 +52,18 @@ enum ParserSmoke {
         }
 
         let pbsChannels = PBSLiveClient.channels
+        let pbsStationMappings = Dictionary(
+            uniqueKeysWithValues: ChannelDirectory.explicitMappings(for: pbsChannels).map {
+                ($0.channelID, $0.stationID)
+            }
+        )
         guard pbsChannels.map(\.id) == ["nhpbs:main", "nhpbs:explore", "nhpbs:world", "nhpbs:kids"],
+              pbsStationMappings == [
+                  "nhpbs:main": "25002",
+                  "nhpbs:explore": "58447",
+                  "nhpbs:world": "63377",
+                  "nhpbs:kids": "107749"
+              ],
               pbsChannels.allSatisfy({ ChannelDirectory.section(for: $0) == .local }),
               pbsChannels.allSatisfy({ channel in
                   if case .pbs = channel.playback { return true }
@@ -1036,11 +1047,11 @@ enum ParserSmoke {
             fatalError("Curated channel filtering or canonical ordering is incorrect")
         }
 
-        guard ChannelDirectory.channels.count == 66,
-              Set(ChannelDirectory.channels.map(\.playbackIdentity)).count == 66,
+        guard ChannelDirectory.channels.count == 70,
+              Set(ChannelDirectory.channels.map(\.playbackIdentity)).count == 70,
               ChannelDirectory.channels.allSatisfy({ Int($0.stationID) != nil }),
               ChannelDirectory.channels.first(where: { $0.displayName == "CBS 60fps - New York" })?.stationID == "16689" else {
-            fatalError("The curated 66-channel playback/XMLTV mapping is incomplete")
+            fatalError("The curated 70-channel playback/XMLTV mapping is incomplete")
         }
 
         let expectedCoreSections: [LiveChannelSection: Set<String>] = [

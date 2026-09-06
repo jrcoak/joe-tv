@@ -629,14 +629,34 @@ final class AppModel: ObservableObject {
 
         do {
             activeLiveChannelID = nil
+            let startAtLiveEdge: Bool = {
+                switch item.sportsPhase(at: Date()) {
+                case .live, .upcoming:
+                    return true
+                case .replay, .completed:
+                    return false
+                }
+            }()
             switch option?.playback ?? item.playback {
             case .hls(let url):
-                playbackSession = PlaybackSession(title: item.title, url: url)
+                playbackSession = PlaybackSession(
+                    title: item.title,
+                    url: url,
+                    startAtLiveEdge: startAtLiveEdge
+                )
             case .request(let request):
                 let url = try await client.resolveStream(request)
-                playbackSession = PlaybackSession(title: item.title, url: url)
+                playbackSession = PlaybackSession(
+                    title: item.title,
+                    url: url,
+                    startAtLiveEdge: startAtLiveEdge
+                )
             case .drmPage(let pageURL):
-                playbackSession = try await makeDRMPlaybackSession(title: item.title, pageURL: pageURL)
+                playbackSession = try await makeDRMPlaybackSession(
+                    title: item.title,
+                    pageURL: pageURL,
+                    startAtLiveEdge: startAtLiveEdge
+                )
             case .unavailable:
                 throw SeasonsError.message("This event is scheduled, but Seasons4U has not published a playable stream yet.")
             }
@@ -680,31 +700,49 @@ final class AppModel: ObservableObject {
     func makePreviewSession(for channel: LiveChannel) async throws -> PlaybackSession {
         switch channel.playback {
         case .drmPage(let pageURL):
-            return try await makeDRMPlaybackSession(title: channel.name, pageURL: pageURL)
+            return try await makeDRMPlaybackSession(
+                title: channel.name,
+                pageURL: pageURL,
+                startAtLiveEdge: true
+            )
         case .request(let request):
             let url = try await client.resolveStream(request)
-            return PlaybackSession(title: channel.name, url: url)
+            return PlaybackSession(title: channel.name, url: url, startAtLiveEdge: true)
         case .veryLocal(let reference):
             let url = try await veryLocalClient.resolveStream(reference)
-            return PlaybackSession(title: channel.name, url: url)
+            return PlaybackSession(title: channel.name, url: url, startAtLiveEdge: true)
         case .pbs(let reference):
             if let configuration = PBSLiveClient.drmConfiguration(for: reference) {
                 #if targetEnvironment(simulator)
                 throw SeasonsError.fairPlayRequiresDevice
                 #else
-                return PlaybackSession(title: channel.name, configuration: configuration, client: client)
+                return PlaybackSession(
+                    title: channel.name,
+                    configuration: configuration,
+                    client: client,
+                    startAtLiveEdge: true
+                )
                 #endif
             }
-            return PlaybackSession(title: channel.name, url: reference.streamURL)
+            return PlaybackSession(title: channel.name, url: reference.streamURL, startAtLiveEdge: true)
         }
     }
 
-    private func makeDRMPlaybackSession(title: String, pageURL: URL) async throws -> PlaybackSession {
+    private func makeDRMPlaybackSession(
+        title: String,
+        pageURL: URL,
+        startAtLiveEdge: Bool
+    ) async throws -> PlaybackSession {
         #if targetEnvironment(simulator)
         throw SeasonsError.fairPlayRequiresDevice
         #else
         let configuration = try await client.loadDRMConfiguration(from: pageURL)
-        return PlaybackSession(title: title, configuration: configuration, client: client)
+        return PlaybackSession(
+            title: title,
+            configuration: configuration,
+            client: client,
+            startAtLiveEdge: startAtLiveEdge
+        )
         #endif
     }
 
