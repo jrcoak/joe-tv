@@ -65,6 +65,9 @@ final class AppModel: ObservableObject {
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
     private static let disabledChannelsKey = "channels.disabledIDs"
     private static let favoriteChannelsKey = "channels.favoriteIDs"
+    private static let favoriteDefaultsVersionKey = "channels.favoriteDefaultsVersion"
+    private static let currentFavoriteDefaultsVersion = 1
+    private static let defaultFavoriteChannelIDs: Set<String> = ["nhpbs:main"]
     private static let sportsDetailPrefetchLimit = 12
     private static let defaultDisabledChannelIDs: Set<String> = [
         // Seasons4U
@@ -138,6 +141,7 @@ final class AppModel: ObservableObject {
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
+        adoptNewDefaultFavoritesIfNeeded()
         #if DEBUG
         if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_DESTINATION"] == "sports" {
             self.destination = .sports
@@ -818,8 +822,20 @@ final class AppModel: ObservableObject {
     private func adoptInitialFavoriteChannelsIfNeeded() {
         guard !hasStoredFavoriteChannelSelection, !liveChannels.isEmpty else { return }
         favoriteChannelIDs = Set(liveChannels.prefix(7).map(\.id))
+            .union(Self.defaultFavoriteChannelIDs)
         hasStoredFavoriteChannelSelection = true
         persistFavoriteChannels()
+        defaults.set(Self.currentFavoriteDefaultsVersion, forKey: Self.favoriteDefaultsVersionKey)
+    }
+
+    private func adoptNewDefaultFavoritesIfNeeded() {
+        guard hasStoredFavoriteChannelSelection,
+              defaults.integer(forKey: Self.favoriteDefaultsVersionKey) < Self.currentFavoriteDefaultsVersion else {
+            return
+        }
+        favoriteChannelIDs.formUnion(Self.defaultFavoriteChannelIDs)
+        persistFavoriteChannels()
+        defaults.set(Self.currentFavoriteDefaultsVersion, forKey: Self.favoriteDefaultsVersionKey)
     }
 
     private func persistFavoriteChannels() {
