@@ -563,7 +563,11 @@ private struct PlayerSessionView: View {
                requestChannelChange(by: 1) {
                 return .handled
             }
-            showControls(restoring: false)
+            if quickSwitchEntries.isEmpty {
+                showControls(restoring: false)
+            } else {
+                showQuickSwitch()
+            }
         case .controls:
             showQuickSwitch()
         case .quickSwitch:

@@ -1232,6 +1232,41 @@ enum ParserSmoke {
             fatalError("FairPlay configuration was not parsed")
         }
 
+        let espnDRMHTML = #"""
+        <script>
+          var source = {
+            hls: 'https://linear-espn.example/channel/master.m3u8',
+            drm: {
+              widevine: {
+                certificateURL: 'https://certs.example/static/v1.0/widevine.bin'
+              },
+              fairplay: {
+                LA_URL: '/PlayerDRME/License__',
+                certificateURL: 'https://certs.example/static/v1.0/espn/fairplay.cer',
+                headers: { 'content-type': 'application/octet-stream' },
+                prepareContentId: function(contentId) {
+                  return contentId.replace('skd://', '').substring(2);
+                }
+              }
+            }
+          };
+        </script>
+        """#
+        let espnPageURL = URL(string: "https://seasons4u.com/PlayerDRMEP/Watch?id=fixture")!
+        let skdURL = URL(string: "skd://xxasset-identifier")!
+        guard let espnDRM = HTMLCatalogParser.parseDRMConfiguration(
+            espnDRMHTML,
+            pageURL: espnPageURL,
+            baseURL: baseURL
+        ),
+              espnDRM.certificateURL.lastPathComponent == "fairplay.cer",
+              espnDRM.licenseURL?.absoluteString == "https://seasons4u.com/PlayerDRME/License__",
+              espnDRM.headers["content-type"] == "application/octet-stream",
+              espnDRM.contentIdentifierStrategy == .schemeStripped(dropFirst: 2),
+              espnDRM.contentIdentifierStrategy.identifier(for: skdURL) == "asset-identifier" else {
+            fatalError("ESPN+ FairPlay configuration selected a non-FairPlay certificate or license")
+        }
+
         print("Parser smoke test passed")
     }
 }

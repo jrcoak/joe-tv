@@ -53,7 +53,9 @@ final class FairPlayResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         configuration.headers.forEach { certificateRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
         let certificate = try await client.authenticatedData(for: certificateRequest)
 
-        let contentIdentifier = Data(skdURL.absoluteString.utf8)
+        let contentIdentifier = Data(
+            configuration.contentIdentifierStrategy.identifier(for: skdURL).utf8
+        )
         let spcData = try loadingRequest.streamingContentKeyRequestData(
             forApp: certificate,
             contentIdentifier: contentIdentifier,

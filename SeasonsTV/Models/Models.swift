@@ -668,25 +668,43 @@ enum ContentLoadState: Equatable {
     }
 }
 
+enum DRMContentIdentifierStrategy: Equatable {
+    case fullSKDURL
+    case schemeStripped(dropFirst: Int)
+
+    func identifier(for skdURL: URL) -> String {
+        switch self {
+        case .fullSKDURL:
+            return skdURL.absoluteString
+        case .schemeStripped(let dropCount):
+            let withoutScheme = skdURL.absoluteString.replacingOccurrences(of: "skd://", with: "")
+            return String(withoutScheme.dropFirst(max(0, dropCount)))
+        }
+    }
+}
+
 struct DRMConfiguration {
     let hlsURL: URL
     let certificateURL: URL
     let licenseProxyPrefix: String?
     let headers: [String: String]
     let licenseURL: URL?
+    let contentIdentifierStrategy: DRMContentIdentifierStrategy
 
     init(
         hlsURL: URL,
         certificateURL: URL,
         licenseProxyPrefix: String?,
         headers: [String: String],
-        licenseURL: URL? = nil
+        licenseURL: URL? = nil,
+        contentIdentifierStrategy: DRMContentIdentifierStrategy = .fullSKDURL
     ) {
         self.hlsURL = hlsURL
         self.certificateURL = certificateURL
         self.licenseProxyPrefix = licenseProxyPrefix
         self.headers = headers
         self.licenseURL = licenseURL
+        self.contentIdentifierStrategy = contentIdentifierStrategy
     }
 }
 

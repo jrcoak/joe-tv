@@ -355,9 +355,7 @@ enum HTMLCatalogParser {
 
     static func parseDRMConfiguration(_ html: String, pageURL: URL, baseURL: URL) -> DRMConfiguration? {
         guard let hlsString = firstCapture(in: html, pattern: #"hls\s*:\s*["']([^"']+\.m3u8[^"']*)["']"#),
-              let hlsURL = absoluteURL(decodeEntities(hlsString), relativeTo: baseURL),
-              let certificateString = firstCapture(in: html, pattern: #"certificateURL\s*:\s*["']([^"']+)["']"#),
-              let certificateURL = absoluteURL(decodeEntities(certificateString), relativeTo: baseURL) else {
+              let hlsURL = absoluteURL(decodeEntities(hlsString), relativeTo: baseURL) else {
             return nil
         }
 
@@ -365,6 +363,16 @@ enum HTMLCatalogParser {
             guard let range = firstRange(in: html, pattern: #"fairplay\s*:"#) else { return html }
             return String(html[range.lowerBound...].prefix(8_000))
         }()
+
+        // ESPN pages contain both Widevine and FairPlay certificateURL fields. Restrict the
+        // lookup to the FairPlay block so Apple TV never receives the Widevine certificate.
+        guard let certificateString = firstCapture(
+            in: fairPlayBlock,
+            pattern: #"certificateURL\s*:\s*["']([^"']+)["']"#
+        ),
+              let certificateURL = absoluteURL(decodeEntities(certificateString), relativeTo: baseURL) else {
+            return nil
+        }
 
         var headers: [String: String] = [:]
         if let headerBlock = firstCapture(in: fairPlayBlock, pattern: #"headers\s*:\s*\{([^}]+)\}"#) {
@@ -382,11 +390,36 @@ enum HTMLCatalogParser {
             ).map(decodeEntities)
         }
 
+        let licenseURL = firstCapture(
+            in: fairPlayBlock,
+            pattern: #"(?:LA_URL|licenseServerURL|licenseServerUrl)\s*:\s*["']([^"']+)["']"#
+        )
+        .map(decodeEntities)
+        .flatMap { absoluteURL($0, relativeTo: baseURL) }
+
+        let contentIdentifierStrategy: DRMContentIdentifierStrategy = {
+            if let dropCount = firstCapture(
+                in: fairPlayBlock,
+                pattern: #"(?is)replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)\s*\.substring\(\s*(\d+)\s*\)"#
+            ).flatMap(Int.init) {
+                return .schemeStripped(dropFirst: dropCount)
+            }
+            if fairPlayBlock.range(
+                of: #"replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil {
+                return .schemeStripped(dropFirst: 0)
+            }
+            return .fullSKDURL
+        }()
+
         return DRMConfiguration(
             hlsURL: hlsURL,
             certificateURL: certificateURL,
             licenseProxyPrefix: prefix,
-            headers: headers
+            headers: headers,
+            licenseURL: licenseURL,
+            contentIdentifierStrategy: contentIdentifierStrategy
         )
     }
 
