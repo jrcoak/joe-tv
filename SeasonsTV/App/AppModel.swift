@@ -15,6 +15,11 @@ final class AppModel: ObservableObject {
         case catalog
     }
 
+    private enum MediaPlaybackTargetSource {
+        case sports
+        case espnPlus
+    }
+
     @Published var screen: Screen = .checkingSession
     @Published var categories: [CatalogCategory] = []
     @Published var liveChannels: [LiveChannel] = []
@@ -30,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var disabledChannelIDs: Set<String>
     @Published private(set) var favoriteChannelIDs: Set<String>
     @Published private(set) var enabledSportsCategoryIDs: Set<String>
+    @Published private(set) var directionalChannelSurfingEnabled = false
     @Published private(set) var sportsSchedule: SportsScheduleSnapshot?
     @Published private(set) var sportsEventDetails: [String: SportsEventDetail] = [:]
     @Published var sportsScheduleState: ContentLoadState = .idle
@@ -47,6 +53,10 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var playbackSession: PlaybackSession?
     @Published private(set) var activeLiveChannelID: String?
+    @Published private(set) var activePlaybackTarget: PlaybackTarget?
+    @Published private(set) var recentPlaybackTargets: [PlaybackTarget] = []
+    @Published private(set) var switchingPlaybackTargetID: String?
+    @Published private(set) var playbackSwitchMessage: String?
 
     let client: SeasonsClient
     let veryLocalClient: VeryLocalClient
@@ -61,11 +71,16 @@ final class AppModel: ObservableObject {
     private var sportsDetailPrefetchTask: Task<Void, Never>?
     private var sportsDetailFocusTask: Task<Void, Never>?
     private var hasStoredFavoriteChannelSelection: Bool
+    private var playbackTransitionID = UUID()
+    #if DEBUG
+    private var debugQuickSwitchTargetIDs: Set<String> = []
+    #endif
 
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
     private static let disabledChannelsKey = "channels.disabledIDs"
     private static let favoriteChannelsKey = "channels.favoriteIDs"
     private static let favoriteDefaultsVersionKey = "channels.favoriteDefaultsVersion"
+    private static let directionalChannelSurfingKey = "playback.directionalChannelSurfing"
     private static let currentFavoriteDefaultsVersion = 1
     private static let defaultFavoriteChannelIDs: Set<String> = ["nhpbs:main"]
     private static let sportsDetailPrefetchLimit = 12
@@ -141,8 +156,15 @@ final class AppModel: ObservableObject {
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
+        self.directionalChannelSurfingEnabled = defaults.bool(
+            forKey: Self.directionalChannelSurfingKey
+        )
         adoptNewDefaultFavoritesIfNeeded()
         #if DEBUG
+        if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_QUICK_SWITCH"] == "1" {
+            configureQuickSwitchDebugFixture()
+            return
+        }
         if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_DESTINATION"] == "sports" {
             self.destination = .sports
         }
@@ -192,6 +214,44 @@ final class AppModel: ObservableObject {
         liveChannels.filter { favoriteChannelIDs.contains($0.id) }
     }
 
+    var quickSwitchEntries: [QuickSwitchRailEntry] {
+        let recentTargets = recentPlaybackTargets.filter(isQuickSwitchTargetAvailable)
+        let favoriteTargets = favoriteLiveChannels.map(makePlaybackTarget)
+        return PlaybackHistoryPolicy.railEntries(
+            recents: recentTargets,
+            favorites: favoriteTargets,
+            currentID: activePlaybackTarget?.id
+        )
+    }
+
+    var lastPlaybackTarget: PlaybackTarget? {
+        recentPlaybackTargets.first {
+            $0.id != activePlaybackTarget?.id && isQuickSwitchTargetAvailable($0)
+        }
+    }
+
+    func quickSwitchNowPlayingTitle(for target: PlaybackTarget, at date: Date = Date()) -> String? {
+        guideProgram(for: target, at: date)?.title
+    }
+
+    func guideProgram(for target: PlaybackTarget, at date: Date = Date()) -> EPGProgram? {
+        guard let channelID = target.channelID,
+              let stationID = channelStationMappings[channelID] else { return nil }
+        return usableGuideWindow?.programsByStationID[stationID]?
+            .first(where: { $0.contains(date) })
+    }
+
+    func quickSwitchNextProgramTitle(for target: PlaybackTarget, at date: Date = Date()) -> String? {
+        nextGuideProgram(for: target, at: date)?.title
+    }
+
+    func nextGuideProgram(for target: PlaybackTarget, at date: Date = Date()) -> EPGProgram? {
+        guard let channelID = target.channelID,
+              let stationID = channelStationMappings[channelID] else { return nil }
+        return usableGuideWindow?.programsByStationID[stationID]?
+            .first(where: { $0.start > date })
+    }
+
     func isChannelFavorite(_ channelID: String) -> Bool {
         favoriteChannelIDs.contains(channelID)
     }
@@ -210,6 +270,11 @@ final class AppModel: ObservableObject {
         hasStoredFavoriteChannelSelection = true
         favoriteChannelIDs.removeAll()
         persistFavoriteChannels()
+    }
+
+    func setDirectionalChannelSurfing(enabled: Bool) {
+        directionalChannelSurfingEnabled = enabled
+        defaults.set(enabled, forKey: Self.directionalChannelSurfingKey)
     }
 
     func setChannel(_ channelID: String, enabled: Bool) {
@@ -626,44 +691,34 @@ final class AppModel: ObservableObject {
     }
 
     func play(_ item: MediaItem, option: MediaItem.PlaybackOption? = nil) async {
+        await playMediaItem(
+            item,
+            option: option,
+            target: makePlaybackTarget(for: item, option: option, source: .sports)
+        )
+    }
+
+    func playESPNPlus(_ item: MediaItem, option: MediaItem.PlaybackOption? = nil) async {
+        await playMediaItem(
+            item,
+            option: option,
+            target: makePlaybackTarget(for: item, option: option, source: .espnPlus)
+        )
+    }
+
+    private func playMediaItem(
+        _ item: MediaItem,
+        option: MediaItem.PlaybackOption?,
+        target: PlaybackTarget
+    ) async {
         workingMessage = "Preparing \(option?.title ?? item.title)…"
         isWorking = true
         errorMessage = nil
         defer { isWorking = false }
 
         do {
-            activeLiveChannelID = nil
-            let startAtLiveEdge: Bool = {
-                switch item.sportsPhase(at: Date()) {
-                case .live, .upcoming:
-                    return true
-                case .replay, .completed:
-                    return false
-                }
-            }()
-            switch option?.playback ?? item.playback {
-            case .hls(let url):
-                playbackSession = PlaybackSession(
-                    title: item.title,
-                    url: url,
-                    startAtLiveEdge: startAtLiveEdge
-                )
-            case .request(let request):
-                let url = try await client.resolveStream(request)
-                playbackSession = PlaybackSession(
-                    title: item.title,
-                    url: url,
-                    startAtLiveEdge: startAtLiveEdge
-                )
-            case .drmPage(let pageURL):
-                playbackSession = try await makeDRMPlaybackSession(
-                    title: item.title,
-                    pageURL: pageURL,
-                    startAtLiveEdge: startAtLiveEdge
-                )
-            case .unavailable:
-                throw SeasonsError.message("This event is scheduled, but Seasons4U has not published a playable stream yet.")
-            }
+            let session = try await makePlaybackSession(for: item, option: option)
+            installPlaybackSession(session, target: target)
         } catch SeasonsError.authenticationRequired {
             screen = .signedOut
             errorMessage = "Your session expired. Sign in again."
@@ -680,9 +735,7 @@ final class AppModel: ObservableObject {
 
         do {
             let session = try await makePreviewSession(for: channel)
-            playbackSession?.player.pause()
-            activeLiveChannelID = channel.id
-            playbackSession = session
+            installPlaybackSession(session, target: makePlaybackTarget(channel))
         } catch SeasonsError.authenticationRequired {
             screen = .signedOut
             errorMessage = "Your session expired. Sign in again."
@@ -691,14 +744,276 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func changeLiveChannel(by offset: Int) async {
-        guard offset != 0,
-              !isWorking,
-              let activeLiveChannelID,
+    func switchPlayback(to target: PlaybackTarget) async {
+        guard playbackSession != nil,
+              switchingPlaybackTargetID == nil,
+              target.id != activePlaybackTarget?.id else { return }
+
+        switchingPlaybackTargetID = target.id
+        playbackSwitchMessage = nil
+        do {
+            let session = try await makePlaybackSession(for: target)
+            installPlaybackSession(session, target: target)
+        } catch SeasonsError.authenticationRequired {
+            switchingPlaybackTargetID = nil
+            screen = .signedOut
+            errorMessage = "Your session expired. Sign in again."
+        } catch {
+            playbackSwitchMessage = "Couldn’t switch to \(target.title). \(error.localizedDescription)"
+            switchingPlaybackTargetID = nil
+        }
+    }
+
+    func adjacentLiveChannel(by offset: Int) -> LiveChannel? {
+        guard let activeLiveChannelID,
               let currentIndex = liveChannels.firstIndex(where: { $0.id == activeLiveChannelID }),
-              !liveChannels.isEmpty else { return }
-        let targetIndex = (currentIndex + offset + liveChannels.count) % liveChannels.count
-        await play(liveChannels[targetIndex])
+              let targetIndex = LiveChannelSurfPolicy.targetIndex(
+                  currentIndex: currentIndex,
+                  offset: offset,
+                  channelCount: liveChannels.count
+              ) else { return nil }
+        return liveChannels[targetIndex]
+    }
+
+    func changeLiveChannel(by offset: Int) async {
+        guard switchingPlaybackTargetID == nil,
+              let channel = adjacentLiveChannel(by: offset) else { return }
+        await switchPlayback(to: makePlaybackTarget(channel))
+    }
+
+    func switchToLastPlayback() async {
+        guard let target = lastPlaybackTarget else { return }
+        await switchPlayback(to: target)
+    }
+
+    func clearPlaybackSwitchMessage() {
+        playbackSwitchMessage = nil
+    }
+
+    private func makePlaybackSession(for target: PlaybackTarget) async throws -> PlaybackSession {
+        #if DEBUG
+        if debugQuickSwitchTargetIDs.contains(target.id) {
+            return PlaybackSession(debugTitle: target.title)
+        }
+        #endif
+        switch target.source {
+        case .liveChannel(let channelID):
+            guard let channel = liveChannels.first(where: { $0.id == channelID }) else {
+                throw SeasonsError.message("That channel is no longer available.")
+            }
+            return try await makePreviewSession(for: channel)
+
+        case .sports(let categoryID, let itemID):
+            guard let item = mediaItem(categoryID: categoryID, itemID: itemID, in: categories)
+                ?? mediaItem(categoryID: categoryID, itemID: itemID, in: playbackCategories),
+                  item.sportsPhase(at: Date()) == .live,
+                  item.sportsPlaybackAvailable(at: Date()) else {
+                throw SeasonsError.message("That event is no longer live.")
+            }
+            return try await makePlaybackSession(
+                for: item,
+                option: playbackOption(withID: target.playbackOptionID, in: item)
+            )
+
+        case .espnPlus(let dateCode, let itemID):
+            guard dateCode == Self.dateCode(for: espnPlusDate),
+                  let item = espnPlusItems.first(where: { $0.id == itemID }),
+                  item.sportsPhase(at: Date()) == .live else {
+                throw SeasonsError.message("That ESPN+ event is no longer live.")
+            }
+            return try await makePlaybackSession(
+                for: item,
+                option: playbackOption(withID: target.playbackOptionID, in: item)
+            )
+        }
+    }
+
+    private func makePlaybackSession(
+        for item: MediaItem,
+        option: MediaItem.PlaybackOption?
+    ) async throws -> PlaybackSession {
+        let startAtLiveEdge: Bool = {
+            switch item.sportsPhase(at: Date()) {
+            case .live, .upcoming:
+                return true
+            case .replay, .completed:
+                return false
+            }
+        }()
+        switch option?.playback ?? item.playback {
+        case .hls(let url):
+            return PlaybackSession(title: item.title, url: url, startAtLiveEdge: startAtLiveEdge)
+        case .request(let request):
+            let url = try await client.resolveStream(request)
+            return PlaybackSession(title: item.title, url: url, startAtLiveEdge: startAtLiveEdge)
+        case .drmPage(let pageURL):
+            return try await makeDRMPlaybackSession(
+                title: item.title,
+                pageURL: pageURL,
+                startAtLiveEdge: startAtLiveEdge
+            )
+        case .unavailable:
+            throw SeasonsError.message("This event is scheduled, but Seasons4U has not published a playable stream yet.")
+        }
+    }
+
+    private func installPlaybackSession(_ session: PlaybackSession, target: PlaybackTarget) {
+        let transitionID = UUID()
+        playbackTransitionID = transitionID
+        let previousSession = playbackSession
+        let previousTarget = activePlaybackTarget
+
+        if previousSession != nil {
+            switchingPlaybackTargetID = target.id
+            playbackSwitchMessage = nil
+        }
+        previousSession?.player.pause()
+        playbackSession = session
+
+        session.setPreparationHandlers(
+            onReady: { [weak self, weak session] in
+                guard let self, let session,
+                      self.playbackTransitionID == transitionID,
+                      self.playbackSession === session else { return }
+                self.recentPlaybackTargets = PlaybackHistoryPolicy.transitioning(
+                    from: previousTarget,
+                    to: target,
+                    recents: self.recentPlaybackTargets
+                )
+                self.activePlaybackTarget = target
+                self.activeLiveChannelID = target.channelID
+                self.switchingPlaybackTargetID = nil
+                self.playbackSwitchMessage = nil
+            },
+            onFailure: { [weak self, weak session] message in
+                guard let self, let session,
+                      self.playbackTransitionID == transitionID,
+                      self.playbackSession === session else { return }
+                guard let previousSession, let previousTarget else { return }
+                session.player.pause()
+                self.playbackSession = previousSession
+                self.activePlaybackTarget = previousTarget
+                self.activeLiveChannelID = previousTarget.channelID
+                self.playbackSwitchMessage = "Couldn’t switch to \(target.title). \(message)"
+                self.switchingPlaybackTargetID = nil
+                previousSession.player.play()
+            }
+        )
+    }
+
+    #if DEBUG
+    private func configureQuickSwitchDebugFixture() {
+        let request = PlaybackRequest(endpoint: "debug", controller: "debug", arguments: [])
+        let channels = [
+            LiveChannel(id: "debug:live", name: "Live Desk", logoURL: nil, playback: .request(request), genre: .news),
+            LiveChannel(id: "debug:espn", name: "ESPN", logoURL: nil, playback: .request(request), genre: .sports),
+            LiveChannel(id: "debug:nbc", name: "NBC · Boston", logoURL: nil, playback: .request(request), genre: .news),
+            LiveChannel(id: "debug:cbs", name: "CBS · New York", logoURL: nil, playback: .request(request), genre: .news),
+            LiveChannel(id: "debug:wcvb", name: "WCVB 5 · Boston", logoURL: nil, playback: .request(request), genre: .news),
+            LiveChannel(id: "debug:nhpbs", name: "NHPBS", logoURL: nil, playback: .request(request), genre: .entertainment)
+        ]
+        liveChannels = channels
+        availableLiveChannels = channels
+        favoriteChannelIDs = Set(channels.dropFirst().map(\.id))
+
+        let recentTargets = [
+            makePlaybackTarget(channels[4]),
+            makePlaybackTarget(channels[5])
+        ]
+        recentPlaybackTargets = recentTargets
+
+        let current = makePlaybackTarget(channels[0])
+        debugQuickSwitchTargetIDs = Set(recentTargets.map(\.id))
+            .union(channels.map(makePlaybackTarget).map(\.id))
+        screen = .catalog
+        installPlaybackSession(PlaybackSession(debugTitle: current.title), target: current)
+    }
+    #endif
+
+    private func makePlaybackTarget(_ channel: LiveChannel) -> PlaybackTarget {
+        PlaybackTarget(
+            source: .liveChannel(channelID: channel.id),
+            playbackOptionID: nil,
+            title: channel.name,
+            sourceLabel: "LIVE TV",
+            detail: nil,
+            imageURL: channel.logoURL
+        )
+    }
+
+    private func makePlaybackTarget(
+        for item: MediaItem,
+        option: MediaItem.PlaybackOption?,
+        source: MediaPlaybackTargetSource
+    ) -> PlaybackTarget {
+        let selectedOption = option ?? item.playbackOptions.first(where: \.isPlayable)
+        let targetSource: PlaybackTarget.Source
+        let sourceLabel: String
+        switch source {
+        case .sports:
+            targetSource = .sports(categoryID: item.categoryID, itemID: item.id)
+            sourceLabel = (item.sportsEvent?.league ?? item.categoryID).uppercased()
+        case .espnPlus:
+            targetSource = .espnPlus(dateCode: Self.dateCode(for: espnPlusDate), itemID: item.id)
+            sourceLabel = "ESPN+"
+        }
+        let optionTitle = selectedOption?.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return PlaybackTarget(
+            source: targetSource,
+            playbackOptionID: selectedOption?.id,
+            title: item.title,
+            sourceLabel: sourceLabel,
+            detail: optionTitle == nil || optionTitle?.caseInsensitiveCompare("Watch") == .orderedSame
+                ? item.subtitle
+                : optionTitle,
+            imageURL: item.sportsEvent?.thumbnailURL ?? item.imageURL
+        )
+    }
+
+    private func playbackOption(
+        withID optionID: String?,
+        in item: MediaItem
+    ) -> MediaItem.PlaybackOption? {
+        if let optionID,
+           let option = item.playbackOptions.first(where: { $0.id == optionID && $0.isPlayable }) {
+            return option
+        }
+        return item.playbackOptions.first(where: \.isPlayable)
+    }
+
+    private func mediaItem(
+        categoryID: String,
+        itemID: String,
+        in categories: [CatalogCategory]
+    ) -> MediaItem? {
+        categories.first(where: { $0.id == categoryID })?.items.first(where: { $0.id == itemID })
+    }
+
+    private func isQuickSwitchTargetAvailable(_ target: PlaybackTarget) -> Bool {
+        switch target.source {
+        case .liveChannel(let channelID):
+            return liveChannels.contains(where: { $0.id == channelID })
+        case .sports(let categoryID, let itemID):
+            guard let item = mediaItem(categoryID: categoryID, itemID: itemID, in: categories)
+                ?? mediaItem(categoryID: categoryID, itemID: itemID, in: playbackCategories) else {
+                return false
+            }
+            return item.sportsPhase(at: Date()) == .live && item.sportsPlaybackAvailable(at: Date())
+        case .espnPlus(let dateCode, let itemID):
+            guard dateCode == Self.dateCode(for: espnPlusDate),
+                  let item = espnPlusItems.first(where: { $0.id == itemID }) else { return false }
+            return item.sportsPhase(at: Date()) == .live
+        }
+    }
+
+    private static func dateCode(for date: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
     }
 
     func makePreviewSession(for channel: LiveChannel) async throws -> PlaybackSession {
@@ -753,9 +1068,15 @@ final class AppModel: ObservableObject {
     func signOut() {
         sportsDetailPrefetchTask?.cancel()
         sportsDetailFocusTask?.cancel()
+        playbackTransitionID = UUID()
+        playbackSession?.clearPreparationHandlers()
         playbackSession?.player.pause()
         playbackSession = nil
         activeLiveChannelID = nil
+        activePlaybackTarget = nil
+        recentPlaybackTargets = []
+        switchingPlaybackTargetID = nil
+        playbackSwitchMessage = nil
         client.clearLocalSession()
         categories = []
         playbackCategories = []
@@ -787,9 +1108,7 @@ final class AppModel: ObservableObject {
     }
 
     func openVeryLocal() {
-        playbackSession?.player.pause()
-        playbackSession = nil
-        activeLiveChannelID = nil
+        dismissPlayback()
         errorMessage = nil
         isVeryLocalOnly = true
         destination = .home
@@ -810,6 +1129,29 @@ final class AppModel: ObservableObject {
 
     func pausePlayback() {
         playbackSession?.player.pause()
+    }
+
+    func dismissPlayback() {
+        playbackTransitionID = UUID()
+        playbackSession?.clearPreparationHandlers()
+        playbackSession?.player.pause()
+        recentPlaybackTargets = PlaybackHistoryPolicy.stopping(
+            current: activePlaybackTarget,
+            recents: recentPlaybackTargets
+        )
+        playbackSession = nil
+        activePlaybackTarget = nil
+        activeLiveChannelID = nil
+        switchingPlaybackTargetID = nil
+        playbackSwitchMessage = nil
+    }
+
+    private var usableGuideWindow: EPGGuideWindow? {
+        switch epgState {
+        case .loaded(let window): return window
+        case .loading(let cached), .failed(_, let cached): return cached
+        case .unavailable: return nil
+        }
     }
 
     private func replaceAvailableChannels(with channels: [LiveChannel]) {

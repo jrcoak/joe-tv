@@ -455,6 +455,125 @@ struct LiveChannel: Identifiable {
     let genre: ChannelGenre
 }
 
+struct PlaybackTarget: Identifiable, Hashable {
+    enum Source: Hashable {
+        case liveChannel(channelID: String)
+        case sports(categoryID: String, itemID: String)
+        case espnPlus(dateCode: String, itemID: String)
+    }
+
+    let source: Source
+    let playbackOptionID: String?
+    let title: String
+    let sourceLabel: String
+    let detail: String?
+    let imageURL: URL?
+
+    var id: String {
+        switch source {
+        case .liveChannel(let channelID):
+            return "channel:\(channelID)"
+        case .sports(let categoryID, let itemID):
+            return "sports:\(categoryID):\(itemID)"
+        case .espnPlus(let dateCode, let itemID):
+            return "espnplus:\(dateCode):\(itemID)"
+        }
+    }
+
+    var channelID: String? {
+        guard case .liveChannel(let channelID) = source else { return nil }
+        return channelID
+    }
+}
+
+struct QuickSwitchRailEntry: Identifiable, Hashable {
+    enum Section: Hashable {
+        case recent
+        case favorite
+    }
+
+    let section: Section
+    let target: PlaybackTarget
+
+    var id: String { target.id }
+}
+
+enum PlaybackHistoryPolicy {
+    static let recentLimit = 4
+
+    static func transitioning(
+        from previous: PlaybackTarget?,
+        to next: PlaybackTarget,
+        recents: [PlaybackTarget]
+    ) -> [PlaybackTarget] {
+        var updated = recents.filter { $0.id != next.id && $0.id != previous?.id }
+        if let previous, previous.id != next.id {
+            updated.insert(previous, at: 0)
+        }
+        return Array(updated.prefix(recentLimit))
+    }
+
+    static func stopping(
+        current: PlaybackTarget?,
+        recents: [PlaybackTarget]
+    ) -> [PlaybackTarget] {
+        guard let current else { return Array(recents.prefix(recentLimit)) }
+        var updated = recents.filter { $0.id != current.id }
+        updated.insert(current, at: 0)
+        return Array(updated.prefix(recentLimit))
+    }
+
+    static func railEntries(
+        recents: [PlaybackTarget],
+        favorites: [PlaybackTarget],
+        currentID: String?
+    ) -> [QuickSwitchRailEntry] {
+        var seen = Set<String>()
+        if let currentID { seen.insert(currentID) }
+
+        let recentEntries = recents.prefix(recentLimit).compactMap { target -> QuickSwitchRailEntry? in
+            guard seen.insert(target.id).inserted else { return nil }
+            return QuickSwitchRailEntry(section: .recent, target: target)
+        }
+        let favoriteEntries = favorites.compactMap { target -> QuickSwitchRailEntry? in
+            guard seen.insert(target.id).inserted else { return nil }
+            return QuickSwitchRailEntry(section: .favorite, target: target)
+        }
+        return recentEntries + favoriteEntries
+    }
+}
+
+enum LiveChannelSurfPolicy {
+    static func targetIndex(
+        currentIndex: Int,
+        offset: Int,
+        channelCount: Int
+    ) -> Int? {
+        guard channelCount > 1,
+              currentIndex >= 0,
+              currentIndex < channelCount,
+              offset != 0 else { return nil }
+        let remainder = (currentIndex + offset) % channelCount
+        return remainder >= 0 ? remainder : remainder + channelCount
+    }
+}
+
+enum PlaybackSeekPolicy {
+    static func targetTime(
+        currentTime: Double,
+        offset: Double,
+        bounds: ClosedRange<Double>
+    ) -> Double? {
+        guard currentTime.isFinite,
+              offset.isFinite,
+              offset != 0,
+              bounds.lowerBound.isFinite,
+              bounds.upperBound.isFinite,
+              bounds.lowerBound <= bounds.upperBound else { return nil }
+        return min(max(currentTime + offset, bounds.lowerBound), bounds.upperBound)
+    }
+}
+
 struct EPGProgram: Identifiable, Equatable {
     let id: String
     let stationID: String
@@ -576,6 +695,7 @@ final class PlaybackSession: ObservableObject, Identifiable {
     let id = UUID()
     let title: String
     let player: AVPlayer
+    let isLivePlayback: Bool
     @Published private(set) var playbackError: String?
     @Published private(set) var isReady = false
     private let startAtLiveEdge: Bool
@@ -583,10 +703,13 @@ final class PlaybackSession: ObservableObject, Identifiable {
     private var statusObservation: NSKeyValueObservation?
     private var preparationTimeout: Task<Void, Never>?
     private var didPositionAtLiveEdge = false
+    private var readyHandler: (() -> Void)?
+    private var failureHandler: ((String) -> Void)?
 
     init(title: String, url: URL, startAtLiveEdge: Bool = false) {
         self.title = title
         self.startAtLiveEdge = startAtLiveEdge
+        self.isLivePlayback = startAtLiveEdge
         let item = AVPlayerItem(url: url)
         item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
         self.player = AVPlayer(playerItem: item)
@@ -594,6 +717,17 @@ final class PlaybackSession: ObservableObject, Identifiable {
         monitor(item)
         startPreparationTimeout()
     }
+
+    #if DEBUG
+    init(debugTitle title: String, isLivePlayback: Bool = true) {
+        self.title = title
+        self.startAtLiveEdge = isLivePlayback
+        self.isLivePlayback = isLivePlayback
+        self.player = AVPlayer()
+        self.resourceLoader = nil
+        self.isReady = true
+    }
+    #endif
 
     init(
         title: String,
@@ -603,6 +737,7 @@ final class PlaybackSession: ObservableObject, Identifiable {
     ) {
         self.title = title
         self.startAtLiveEdge = startAtLiveEdge
+        self.isLivePlayback = startAtLiveEdge
         let asset = AVURLAsset(url: configuration.hlsURL)
         let loader = FairPlayResourceLoader(configuration: configuration, client: client)
         asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "com.seasonstv.fairplay"))
@@ -639,11 +774,15 @@ final class PlaybackSession: ObservableObject, Identifiable {
         switch AVPlayerItem.Status(rawValue: rawValue) {
         case .readyToPlay:
             positionAtLiveEdgeIfNeeded()
+            let firstReady = !isReady
             isReady = true
             preparationTimeout?.cancel()
+            if firstReady {
+                readyHandler?()
+                clearPreparationHandlers()
+            }
         case .failed:
-            isReady = false
-            playbackError = "This stream could not be played. Return to browse and try again."
+            failPreparation("This stream could not be played. Return to browse and try again.")
             #if DEBUG
             if let errorDomain, let errorCode {
                 print("AVPlayer item failed [\(errorDomain) \(errorCode)]")
@@ -666,8 +805,73 @@ final class PlaybackSession: ObservableObject, Identifiable {
             guard !Task.isCancelled else { return }
             guard let self, !self.isReady, self.playbackError == nil else { return }
             self.player.pause()
-            self.playbackError = "This stream did not begin in time. Return to browse and try it again."
+            self.failPreparation("This stream did not begin in time. Return to browse and try it again.")
         }
+    }
+
+    func setPreparationHandlers(
+        onReady: @escaping () -> Void,
+        onFailure: @escaping (String) -> Void
+    ) {
+        if isReady {
+            onReady()
+        } else if let playbackError {
+            onFailure(playbackError)
+        } else {
+            readyHandler = onReady
+            failureHandler = onFailure
+        }
+    }
+
+    func clearPreparationHandlers() {
+        readyHandler = nil
+        failureHandler = nil
+    }
+
+    @discardableResult
+    func seek(by offset: Double) -> Bool {
+        guard let bounds = seekBounds,
+              let target = PlaybackSeekPolicy.targetTime(
+                  currentTime: player.currentTime().seconds,
+                  offset: offset,
+                  bounds: bounds
+              ) else { return false }
+
+        if isLivePlayback, bounds.upperBound - target < 0.5 {
+            player.seek(to: .positiveInfinity)
+        } else {
+            player.seek(
+                to: CMTime(seconds: target, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+        }
+        return true
+    }
+
+    private var seekBounds: ClosedRange<Double>? {
+        guard let item = player.currentItem else { return nil }
+
+        for value in item.seekableTimeRanges.reversed() {
+            let range = value.timeRangeValue
+            let lowerBound = range.start.seconds
+            let upperBound = range.end.seconds
+            if lowerBound.isFinite, upperBound.isFinite, lowerBound < upperBound {
+                return lowerBound...upperBound
+            }
+        }
+
+        guard !isLivePlayback else { return nil }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return nil }
+        return 0...duration
+    }
+
+    private func failPreparation(_ message: String) {
+        isReady = false
+        playbackError = message
+        failureHandler?(message)
+        clearPreparationHandlers()
     }
 
     deinit {

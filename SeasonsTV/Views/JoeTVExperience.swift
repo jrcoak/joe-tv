@@ -1364,7 +1364,7 @@ struct JoeTVESPNPlusView: View {
                     ) {
                         ForEach(displayedItems) { item in
                             Button {
-                                Task { await model.play(item) }
+                                Task { await model.playESPNPlus(item) }
                             } label: {
                                 JoeTVESPNPlusCard(item: item)
                             }

@@ -1,6 +1,6 @@
 # Playback interaction and ESPN+ feasibility
 
-Research date: 2026-09-01. This document records design and feasibility findings only. The quick-guide overlay, Picture in Picture, DVR, and ESPN+ consolidation described here are not implemented by this change.
+Research date: 2026-09-01. The quick-switch overlay was implemented on 2026-09-06 and the conventional Siri Remote mapping was implemented on 2026-09-07. Picture in Picture, DVR, and ESPN+ consolidation remain feasibility findings only.
 
 ## Quick switching while video remains visible
 
@@ -10,18 +10,20 @@ The strongest pattern across established live-TV apps is a lightweight overlay r
 - Sling documents a channel-surfing surface that keeps playback visible and a hold-Select previous-channel action.
 - YouTube TV documents long-pressing Select to return to the last channel.
 
-Recommended Joe-TV design: pressing Down while watching opens a translucent bottom **Quick Bar** with two rows or tabs:
+Implemented Joe-TV design: while video is unobstructed, Select, Up, or Down reveals playback controls with Play/Pause focused. A second Down opens the translucent bottom **Quick Switch** rail. A 0.6-second Select hold returns live playback to the last stream; it has no custom meaning during on-demand playback. The physical Play/Pause command toggles immediately. Left/Right seeks in ten-second steps only when AVPlayer reports a valid DVR or on-demand seek window, with repeated remote movement providing continued scrubbing. Page Up/Down changes live channels. Back closes the rail, then controls, then playback. The optional **Up/Down button channel surfing** preference restores blind channel surfing for users who want it, but is disabled by default so directional gestures follow the established playback-controls convention.
 
-1. **Recent** — the last 5–8 resolved content identities from this session, spanning Live TV, Sports, and ESPN+.
-2. **Favorites** — favorite live channels with now/next metadata.
+The controls surface includes the current EPG program, real start/end times, elapsed progress, and next-program title when guide data is available. The Quick Switch rail is one continuous focus path:
 
-The current video should remain visible behind a dark gradient. Select changes streams, Menu closes the overlay, and long-press Select recalls the previous stream. Store stable provider/content descriptors in history, not raw stream URLs: provider URLs, cookies, and DRM licenses can expire and should be resolved again when selected. Keep only one active playback session so switching does not create overlapping provider connections.
+1. **Recent** — at most four resolved content identities from this session, newest first, spanning Live TV, Sports, and ESPN+.
+2. **Favorites** — favorite live channels with now/next metadata, excluding the current stream and any favorite already present in Recent.
+
+The current video remains visible behind a dark gradient. Select resolves and changes streams, Up returns to playback controls, and Menu/Back reverses one layer at a time before leaving playback. History stores stable provider/content descriptors rather than raw stream URLs, so provider URLs, cookies, and DRM licenses are resolved again when selected. Only one player is active; a failed Quick Switch, last-stream, or channel-surf attempt restores the prior session and reports the error without dismissing playback. Compile and policy tests cover the mapping and seek-window clamping; exact swipe/hold feel and Page Up/Down direction still require a physical Siri Remote check.
 
 Implementation options:
 
 - **Recent carousel only:** smallest change and easiest focus model.
 - **Favorites Quick Guide only:** best traditional channel-surfing feel, but does not span live sports and ESPN+.
-- **Combined Quick Bar:** recommended; a little more state and focus work, but solves both cases without recreating the full guide over video.
+- **Combined Quick Bar:** implemented; it solves both cases without recreating the full guide over video.
 
 Sources: [Channels remote controls](https://getchannels.com/docs/apps/remote-control/general/), [Channels Live TV and Quick Guide](https://getchannels.com/docs/apps/usage/live-tv/), [Channels settings](https://getchannels.com/docs/apps/usage/settings/), [Sling player controls](https://www.sling.com/help/en/learn-about-sling/using-sling/player-controls), [Sling channel-surfing features](https://www.sling.com/whatson/announcements/new-features), and [YouTube TV last-channel control](https://support.google.com/youtubetv/answer/7067974?hl=en).
 

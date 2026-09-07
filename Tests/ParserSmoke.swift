@@ -36,6 +36,79 @@ enum ParserSmoke {
             fatalError("Default Sports category order changed")
         }
 
+        func playbackTarget(_ id: String, option: String? = nil) -> PlaybackTarget {
+            PlaybackTarget(
+                source: .liveChannel(channelID: id),
+                playbackOptionID: option,
+                title: id.uppercased(),
+                sourceLabel: "LIVE TV",
+                detail: nil,
+                imageURL: nil
+            )
+        }
+        let targetA = playbackTarget("a")
+        let targetB = playbackTarget("b")
+        let targetC = playbackTarget("c")
+        let targetD = playbackTarget("d")
+        let targetE = playbackTarget("e")
+        var playbackRecents: [PlaybackTarget] = []
+        var activeTarget: PlaybackTarget? = targetA
+        for next in [targetB, targetC, targetD, targetE] {
+            playbackRecents = PlaybackHistoryPolicy.transitioning(
+                from: activeTarget,
+                to: next,
+                recents: playbackRecents
+            )
+            activeTarget = next
+        }
+        guard playbackRecents.map(\.id) == [targetD.id, targetC.id, targetB.id, targetA.id] else {
+            fatalError("Quick Switch recent playback ordering or four-item limit changed")
+        }
+        playbackRecents = PlaybackHistoryPolicy.transitioning(
+            from: activeTarget,
+            to: targetA,
+            recents: playbackRecents
+        )
+        let railEntries = PlaybackHistoryPolicy.railEntries(
+            recents: playbackRecents,
+            favorites: [targetA, targetB, playbackTarget("f")],
+            currentID: targetA.id
+        )
+        guard railEntries.map(\.target.id) == [targetE.id, targetD.id, targetC.id, targetB.id, playbackTarget("f").id],
+              railEntries.prefix(4).allSatisfy({ $0.section == .recent }),
+              railEntries.last?.section == .favorite else {
+            fatalError("Quick Switch did not combine deduplicated recents and favorites")
+        }
+        guard LiveChannelSurfPolicy.targetIndex(currentIndex: 0, offset: -1, channelCount: 6) == 5,
+              LiveChannelSurfPolicy.targetIndex(currentIndex: 5, offset: 1, channelCount: 6) == 0,
+              LiveChannelSurfPolicy.targetIndex(currentIndex: 3, offset: -1, channelCount: 6) == 2,
+              LiveChannelSurfPolicy.targetIndex(currentIndex: 3, offset: 1, channelCount: 6) == 4,
+              LiveChannelSurfPolicy.targetIndex(currentIndex: 0, offset: 1, channelCount: 1) == nil else {
+            fatalError("Live channel Up/Down ordering or wraparound changed")
+        }
+        guard PlaybackSeekPolicy.targetTime(
+            currentTime: 45,
+            offset: -10,
+            bounds: 0...120
+        ) == 35,
+              PlaybackSeekPolicy.targetTime(
+                  currentTime: 4,
+                  offset: -10,
+                  bounds: 0...120
+              ) == 0,
+              PlaybackSeekPolicy.targetTime(
+                  currentTime: 116,
+                  offset: 10,
+                  bounds: 0...120
+              ) == 120,
+              PlaybackSeekPolicy.targetTime(
+                  currentTime: 45,
+                  offset: 0,
+                  bounds: 0...120
+              ) == nil else {
+            fatalError("Playback seeking no longer clamps safely to the available window")
+        }
+
         let veryLocalChannels = VeryLocalClient(session: .shared).loadChannels()
         guard veryLocalChannels.count == 29,
               veryLocalChannels.first?.id == "verylocal:htv-national-desk",

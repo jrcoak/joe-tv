@@ -19,6 +19,11 @@ struct RootView: View {
             if model.isWorking {
                 WorkingOverlay(message: model.workingMessage)
             }
+
+            if model.playbackSession != nil {
+                PlayerScreen()
+                    .zIndex(100)
+            }
         }
         .alert(
             "Joe-TV",
@@ -29,9 +34,6 @@ struct RootView: View {
             actions: { Button("OK", role: .cancel) {} },
             message: { Text(model.errorMessage ?? "") }
         )
-        .fullScreenCover(item: $model.playbackSession) { session in
-            PlayerScreen(session: session)
-        }
     }
 }
 
@@ -419,6 +421,47 @@ private struct ChannelSettingsView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 12) {
+                    Text("PLAYBACK")
+                        .font(.caption.weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        model.setDirectionalChannelSurfing(
+                            enabled: !model.directionalChannelSurfingEnabled
+                        )
+                    } label: {
+                        HStack(spacing: 18) {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 22, weight: .semibold))
+                                .frame(width: 34)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Up/Down button channel surfing")
+                                    .font(.title3.weight(.medium))
+                                Text("Optional. When off, directional gestures reveal playback controls.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(
+                                systemName: model.directionalChannelSurfingEnabled
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                            .foregroundStyle(
+                                model.directionalChannelSurfingEnabled
+                                    ? SeasonTheme.accent
+                                    : .secondary
+                            )
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(SportsSettingsRowButtonStyle())
+                    .accessibilityValue(
+                        model.directionalChannelSurfingEnabled ? "Enabled" : "Disabled"
+                    )
+                    .accessibilityIdentifier("settings.playback.directionalChannelSurfing")
+
                     ForEach(sections) { section in
                         Text(section.title.uppercased())
                             .font(.caption.weight(.semibold))
