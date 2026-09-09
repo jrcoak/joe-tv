@@ -81,8 +81,7 @@ private struct PlayerSessionView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            PlayerSurface(player: session.player)
-                .ignoresSafeArea()
+            playbackSurface
 
             if session.playbackError == nil,
                session.isReady,
@@ -226,6 +225,22 @@ private struct PlayerSessionView: View {
         )
     }
 
+    @ViewBuilder
+    private var playbackSurface: some View {
+        if model.playbackPresentation == .fantasyZone {
+            HStack(spacing: 0) {
+                FantasyPlaybackRail()
+                    .frame(width: 340)
+                PlayerSurface(player: session.player)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .ignoresSafeArea()
+        } else {
+            PlayerSurface(player: session.player)
+                .ignoresSafeArea()
+        }
+    }
+
     private var playerChrome: some View {
         VStack(spacing: 0) {
             HStack {
@@ -268,7 +283,8 @@ private struct PlayerSessionView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, 64)
+            .padding(.leading, model.playbackPresentation == .fantasyZone ? 374 : 64)
+            .padding(.trailing, 64)
             .padding(.top, 70)
             .padding(.bottom, 44)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -382,10 +398,17 @@ private struct PlayerSessionView: View {
                 }
 
                 Button {
-                    model.destination = .liveTV
+                    model.destination = model.playbackPresentation == .fantasyZone
+                        ? .sports
+                        : .liveTV
                     model.dismissPlayback()
                 } label: {
-                    Label("Guide", systemImage: "rectangle.grid.1x2")
+                    Label(
+                        model.playbackPresentation == .fantasyZone ? "Fantasy Zone" : "Guide",
+                        systemImage: model.playbackPresentation == .fantasyZone
+                            ? "trophy.fill"
+                            : "rectangle.grid.1x2"
+                    )
                 }
                 .buttonStyle(PlayerControlButtonStyle())
                 .focused($focusedTarget, equals: .guide)
@@ -776,6 +799,207 @@ private struct PlayerSessionView: View {
                   model.switchingPlaybackTargetID == nil,
                   session.playbackError == nil else { return }
             hideChrome()
+        }
+    }
+}
+
+private struct FantasyPlaybackRail: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let liveGames = model.fantasyNFLScoreItems.filter {
+                $0.sportsPhase(at: context.date) == .live
+            }
+
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trophy.fill")
+                        Text("FANTASY ZONE")
+                    }
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .tracking(1.5)
+                    .foregroundStyle(SeasonTheme.liveSignal)
+
+                    Text(model.fantasyLeague?.name ?? "Your matchup")
+                        .font(.system(size: 22, weight: .regular, design: .serif))
+                        .foregroundStyle(SeasonTheme.paper)
+                        .lineLimit(2)
+
+                    if let week = model.fantasyMatchup?.week {
+                        Text("WEEK \(week)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.1)
+                            .foregroundStyle(SeasonTheme.secondaryText)
+                    }
+                }
+
+                fantasyMatchupCard
+
+                Rectangle()
+                    .fill(SeasonTheme.keyline)
+                    .frame(height: 1)
+
+                HStack {
+                    Text("NFL LIVE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                    Spacer()
+                    Text("\(liveGames.count)")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                }
+                .foregroundStyle(SeasonTheme.paper.opacity(0.72))
+
+                if liveGames.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: "football")
+                            .font(.system(size: 24))
+                        Text("Scores appear here when NFL games are live.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(SeasonTheme.secondaryText)
+                    }
+                    .padding(.top, 8)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(Array(liveGames.prefix(5))) { item in
+                            FantasyPlaybackGameRow(item: item)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Text("LIVE SCORES · REFRESHES EVERY 30 SEC")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(0.75)
+                    .foregroundStyle(SeasonTheme.secondaryText.opacity(0.8))
+            }
+            .padding(.top, 52)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 28)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.055, green: 0.06, blue: 0.07), Color.black],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(SeasonTheme.keyline).frame(width: 1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var fantasyMatchupCard: some View {
+        if let matchup = model.fantasyMatchup {
+            VStack(spacing: 12) {
+                fantasyTeamRow(
+                    label: "YOU",
+                    name: model.fantasyUserTeam?.name ?? "Your team",
+                    score: matchup.userPoints
+                )
+                fantasyTeamRow(
+                    label: "OPP",
+                    name: model.fantasyOpponentTeam?.name ?? "Opponent",
+                    score: matchup.opponentPoints
+                )
+
+                Text(marginText(matchup))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(14)
+            .background(SeasonTheme.raisedSurface.opacity(0.92))
+            .overlay { RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline) }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        } else {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Loading your matchup…")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
+            .padding(14)
+        }
+    }
+
+    private func fantasyTeamRow(label: String, name: String, score: Double?) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(0.8)
+                .foregroundStyle(SeasonTheme.liveSignal)
+                .frame(width: 28, alignment: .leading)
+            Text(name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(SeasonTheme.paper)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(score.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "—")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(SeasonTheme.paper)
+                .monospacedDigit()
+        }
+    }
+
+    private func marginText(_ matchup: FantasyMatchupSnapshot) -> String {
+        guard let opponent = matchup.opponentPoints else { return "Opponent score pending" }
+        let difference = matchup.userPoints - opponent
+        if abs(difference) < 0.005 { return "MATCHUP TIED" }
+        let points = abs(difference).formatted(.number.precision(.fractionLength(2)))
+        return difference > 0 ? "LEADING BY \(points)" : "TRAILING BY \(points)"
+    }
+}
+
+private struct FantasyPlaybackGameRow: View {
+    let item: MediaItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Circle()
+                    .fill(SeasonTheme.liveSignal)
+                    .frame(width: 5, height: 5)
+                Text(item.sportsEvent?.status?.uppercased() ?? "LIVE")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SeasonTheme.liveSignal)
+                    .lineLimit(1)
+                Spacer()
+            }
+            if let event = item.sportsEvent {
+                scoreRow(event.awayTeam ?? "Away", score: event.awayScore)
+                scoreRow(event.homeTeam ?? "Home", score: event.homeScore)
+            } else {
+                Text(item.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(SeasonTheme.paper)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.045))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(SeasonTheme.keyline) }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func scoreRow(_ name: String, score: Int?) -> some View {
+        HStack(spacing: 8) {
+            Text(name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(SeasonTheme.paper)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(score.map(String.init) ?? "–")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(SeasonTheme.paper)
+                .monospacedDigit()
         }
     }
 }

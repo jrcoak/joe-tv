@@ -20,11 +20,13 @@ struct SportsCategoryOption: Identifiable {
         .init(id: "hockey", title: "Hockey", symbol: "hockey.puck.fill"),
         .init(id: "basketball", title: "Basketball", symbol: "basketball.fill"),
         .init(id: "soccer", title: "Soccer", symbol: "soccerball"),
-        .init(id: "college", title: "College", symbol: "graduationcap.fill"),
-        .init(id: "channels", title: "Channels", symbol: "tv.fill"),
+        .init(id: "tennis", title: "Tennis", symbol: "tennis.racket"),
+        .init(id: "golf", title: "Golf", symbol: "figure.golf"),
         .init(id: "combat", title: "Combat", symbol: "figure.boxing"),
         .init(id: "racing", title: "Racing", symbol: "flag.checkered"),
-        .init(id: "other", title: "More", symbol: "square.grid.2x2.fill")
+        .init(id: "volleyball", title: "Volleyball", symbol: "volleyball.fill"),
+        .init(id: "lacrosse", title: "Lacrosse", symbol: "figure.lacrosse"),
+        .init(id: "other", title: "Other", symbol: "square.grid.2x2.fill")
     ]
 }
 
@@ -158,6 +160,13 @@ enum SportsEventPhase: Equatable {
     case completed
 }
 
+enum SportsGuideScope: String, CaseIterable, Identifiable {
+    case live = "Live"
+    case upcoming = "Upcoming"
+
+    var id: String { rawValue }
+}
+
 extension MediaItem {
     static let sportsCoverageLeadTime: TimeInterval = 15 * 60
 
@@ -181,6 +190,9 @@ extension MediaItem {
         }
         if Self.containsLiveSignal(statusText) {
             return .live
+        }
+        if Self.containsUpcomingSignal(statusText) {
+            return .upcoming
         }
 
         guard let event = sportsEvent else {
@@ -217,6 +229,271 @@ extension MediaItem {
     private static func containsLiveSignal(_ value: String) -> Bool {
         ["live", "progress", "in progress", "halftime", "period", "quarter"]
             .contains(where: value.contains)
+    }
+
+    private static func containsUpcomingSignal(_ value: String) -> Bool {
+        ["scheduled", "upcoming", "starts at", "game time", "coverage begins"]
+            .contains(where: value.contains)
+    }
+}
+
+enum SportsCategoryClassifier {
+    static func categoryID(
+        title: String,
+        subtitle: String? = nil,
+        upstreamCategory: String? = nil,
+        sport: String? = nil,
+        league: String? = nil
+    ) -> String? {
+        let value = normalized([title, subtitle, upstreamCategory, sport, league]
+            .compactMap { $0 }
+            .joined(separator: " "))
+
+        if isESPNStudioProgramming(value) { return nil }
+        if containsAny(value, ["soccer", "futbol", "la liga", "laliga", "eredivisie", "nwsl", "usl", "uefa", "fifa"]) {
+            return "soccer"
+        }
+        if containsAny(value, ["baseball", "softball", "mlb", "little league", "banana ball", "necb"] ) {
+            return "baseball"
+        }
+        if containsAny(value, ["basketball", "nba", "wnba", "ncaab"]) { return "basketball" }
+        if containsAny(value, ["field hockey", "ice hockey", "hockey", "nhl"]) { return "hockey" }
+        if containsAny(value, ["tennis", "us open", "wimbledon", "atp", "wta", "pickleball"]) { return "tennis" }
+        if containsAny(value, ["golf", "pga", "lpga", "ryder cup"]) { return "golf" }
+        if containsAny(value, ["football", "nfl", "ncaaf", "cfl", "xfl"]) { return "football" }
+        if containsAny(value, ["volleyball"]) { return "volleyball" }
+        if containsAny(value, ["lacrosse", "premier lacrosse", "womens lacrosse", "pll", "wll"]) { return "lacrosse" }
+        if containsAny(value, ["boxing", "mma", "ufc", "professional fighters league", "wwe", "wrestling", "most valuable promotions"]) {
+            return "combat"
+        }
+        if containsAny(value, ["racing", "nascar", "formula 1", "indycar", "motogp", "grand prix"]) { return "racing" }
+        if containsAny(value, ["surf", "water polo", "nineball", "billiard", "sport fishing", "poker"]) { return "other" }
+        return nil
+    }
+
+    static func categoryID(for item: MediaItem) -> String? {
+        let combinedValue = normalized([
+            item.title,
+            item.subtitle,
+            item.categoryID,
+            item.sportsEvent?.sport,
+            item.sportsEvent?.league
+        ]
+        .compactMap { $0 }
+        .joined(separator: " "))
+        if isESPNStudioProgramming(combinedValue) { return nil }
+
+        let canonicalIDs = Set(SportsCategoryOption.all.map(\.id))
+        if canonicalIDs.contains(item.categoryID) { return item.categoryID }
+        if item.categoryID == "channels" { return nil }
+        let classified = categoryID(
+            title: item.title,
+            subtitle: item.subtitle,
+            upstreamCategory: item.categoryID,
+            sport: item.sportsEvent?.sport,
+            league: item.sportsEvent?.league
+        )
+        if let classified { return classified }
+        if item.categoryID == "college" { return "football" }
+        return item.categoryID == "other" ? "other" : nil
+    }
+
+    private static func normalized(_ value: String) -> String {
+        " " + value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines) + " "
+    }
+
+    private static func containsAny(_ value: String, _ candidates: [String]) -> Bool {
+        candidates.contains { value.contains(" \($0) ") || value.contains(" \($0)") }
+    }
+
+    private static func isESPNStudioProgramming(_ value: String) -> Bool {
+        [
+            "espn fc daily", "futbol w", "futbol americas", "fairways of life",
+            "flames central", "pardon the interruption", "pat mcafee show", "the golics",
+            "mecum auctions", "sportscenter", "first take", "around the horn", "daily wager",
+            "college football countdown", "college gameday", "monday night countdown",
+            "sunday nfl countdown", "fantasy football now", "nfl live", "the huddle",
+            "the insiders", "read react", "baseball tonight", "nba today", "nhl tonight"
+        ].contains(where: value.contains)
+    }
+}
+
+enum SportsEventGuidePolicy {
+    static func consolidatedItems(
+        categories: [CatalogCategory],
+        espnPlusItems: [MediaItem]
+    ) -> [MediaItem] {
+        var result: [MediaItem] = []
+        let candidates = categories.flatMap(\.items) + espnPlusItems
+
+        for candidate in candidates where !candidate.isGenericSportsChannelShortcut {
+            guard let categoryID = SportsCategoryClassifier.categoryID(for: candidate) else { continue }
+            let item = replacingCategory(of: candidate, with: categoryID)
+            if let index = result.firstIndex(where: { describeSameEvent($0, item) }) {
+                result[index] = merge(result[index], item, categoryID: categoryID)
+            } else {
+                result.append(item)
+            }
+        }
+
+        return result.sorted(by: chronologicalOrder)
+    }
+
+    static func filteredItems(
+        _ items: [MediaItem],
+        scope: SportsGuideScope,
+        selectedCategoryIDs: Set<String>,
+        at date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [MediaItem] {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+        let upcomingCutoff = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: tomorrow)) ?? .distantFuture
+
+        return items.filter { item in
+            guard selectedCategoryIDs.contains(item.categoryID) else { return false }
+            switch (scope, item.sportsPhase(at: date)) {
+            case (.live, .live):
+                return true
+            case (.upcoming, .upcoming):
+                guard let start = item.sportsEvent?.startsAt else { return true }
+                return start < upcomingCutoff
+            default:
+                return false
+            }
+        }
+        .sorted(by: chronologicalOrder)
+    }
+
+    static func sourceLabels(for item: MediaItem) -> [String] {
+        var labels: [String] = []
+        for option in item.playbackOptions where option.isPlayable {
+            let label: String
+            switch option.playback {
+            case .drmPage(let url) where url.path.localizedCaseInsensitiveContains("PlayerDRMEP"):
+                label = "ESPN+"
+            case .request, .hls, .drmPage:
+                label = "S4U"
+            case .unavailable:
+                continue
+            }
+            if !labels.contains(label) { labels.append(label) }
+        }
+        return labels
+    }
+
+    private static func replacingCategory(of item: MediaItem, with categoryID: String) -> MediaItem {
+        MediaItem(
+            id: item.id,
+            title: item.title,
+            subtitle: item.subtitle,
+            imageURL: item.imageURL,
+            categoryID: categoryID,
+            playbackOptions: item.playbackOptions,
+            sportsEvent: item.sportsEvent,
+            providerEventDateCode: item.providerEventDateCode
+        )
+    }
+
+    private static func merge(_ preferred: MediaItem, _ incoming: MediaItem, categoryID: String) -> MediaItem {
+        let metadataItem: MediaItem
+        let secondaryItem: MediaItem
+        if preferred.sportsEvent != nil || incoming.sportsEvent == nil {
+            metadataItem = preferred
+            secondaryItem = incoming
+        } else {
+            metadataItem = incoming
+            secondaryItem = preferred
+        }
+
+        var optionSignatures = Set<String>()
+        let options = (preferred.playbackOptions + incoming.playbackOptions).filter { option in
+            guard option.isPlayable else { return false }
+            return optionSignatures.insert(playbackSignature(option.playback)).inserted
+        }
+
+        return MediaItem(
+            id: metadataItem.id,
+            title: metadataItem.title,
+            subtitle: metadataItem.subtitle ?? secondaryItem.subtitle,
+            imageURL: metadataItem.imageURL ?? secondaryItem.imageURL,
+            categoryID: categoryID,
+            playbackOptions: options,
+            sportsEvent: metadataItem.sportsEvent ?? secondaryItem.sportsEvent,
+            providerEventDateCode: metadataItem.providerEventDateCode ?? secondaryItem.providerEventDateCode
+        )
+    }
+
+    private static func describeSameEvent(_ lhs: MediaItem, _ rhs: MediaItem) -> Bool {
+        if lhs.id == rhs.id { return true }
+        guard titlesDescribeSameEvent(lhs.title, rhs.title) else { return false }
+        switch (lhs.sportsEvent?.startsAt, rhs.sportsEvent?.startsAt) {
+        case let (left?, right?):
+            return abs(left.timeIntervalSince(right)) < 6 * 3_600
+        default:
+            return lhs.providerEventDateCode == nil || rhs.providerEventDateCode == nil ||
+                lhs.providerEventDateCode == rhs.providerEventDateCode
+        }
+    }
+
+    private static func titlesDescribeSameEvent(_ lhs: String, _ rhs: String) -> Bool {
+        guard let left = competitors(in: lhs), let right = competitors(in: rhs) else {
+            return normalizedEventTitle(lhs) == normalizedEventTitle(rhs)
+        }
+        return teamsMatch(left.0, right.0) && teamsMatch(left.1, right.1)
+            || teamsMatch(left.0, right.1) && teamsMatch(left.1, right.0)
+    }
+
+    private static func competitors(in title: String) -> (String, String)? {
+        let cleaned = title
+            .replacingOccurrences(of: #"\b(?:live|espn\+|mlb|nfl|nba|nhl|ncaa)\b"#, with: " ", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"\s+(?:@|at|vs\.?|versus)\s+"#, with: "|", options: [.regularExpression, .caseInsensitive])
+        let teams = cleaned.split(separator: "|", maxSplits: 1).map(normalizedTitle)
+        guard teams.count == 2, teams.allSatisfy({ !$0.isEmpty }) else { return nil }
+        return (teams[0], teams[1])
+    }
+
+    private static func normalizedEventTitle(_ title: String) -> String {
+        normalizedTitle(
+            title.replacingOccurrences(
+                of: #"\b(?:live|espn\+|mlb|nfl|nba|nhl|ncaa)\b"#,
+                with: " ",
+                options: [.regularExpression, .caseInsensitive]
+            )
+        )
+    }
+
+    private static func teamsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        lhs == rhs || lhs.hasSuffix(" " + rhs) || rhs.hasSuffix(" " + lhs)
+    }
+
+    private static func normalizedTitle<S: StringProtocol>(_ value: S) -> String {
+        String(value)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func playbackSignature(_ playback: MediaItem.Playback) -> String {
+        switch playback {
+        case .drmPage(let url): return "drm|\(url.absoluteString)"
+        case .hls(let url): return "hls|\(url.absoluteString)"
+        case .request(let request): return "request|\(request.endpoint)|\(request.arguments.joined(separator: "|"))"
+        case .unavailable: return "unavailable"
+        }
+    }
+
+    private static func chronologicalOrder(_ lhs: MediaItem, _ rhs: MediaItem) -> Bool {
+        let leftDate = lhs.sportsEvent?.startsAt ?? .distantFuture
+        let rightDate = rhs.sportsEvent?.startsAt ?? .distantFuture
+        if leftDate != rightDate { return leftDate < rightDate }
+        return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
     }
 }
 
@@ -297,6 +574,60 @@ struct SportsScheduleSnapshot: Decodable, Equatable {
     let windowStart: String
     let windowEnd: String
     let events: [SportsScheduleEvent]
+}
+
+struct FantasyTeamProfile: Identifiable, Equatable, Sendable {
+    let rosterID: Int
+    let userID: String?
+    let name: String
+    let avatarURL: URL?
+
+    var id: Int { rosterID }
+}
+
+struct FantasyUserProfile: Equatable, Sendable {
+    let id: String
+    let username: String
+    let displayName: String
+    let avatarURL: URL?
+}
+
+struct FantasyLeagueChoice: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let avatarURL: URL?
+}
+
+struct FantasyAccountDiscovery: Equatable, Sendable {
+    let user: FantasyUserProfile
+    let leagues: [FantasyLeagueChoice]
+}
+
+struct FantasyLeagueProfile: Equatable, Sendable {
+    let id: String
+    let name: String
+    let avatarURL: URL?
+    let teams: [FantasyTeamProfile]
+
+    func team(forUserID userID: String) -> FantasyTeamProfile? {
+        teams.first { $0.userID == userID }
+    }
+
+    func team(forRosterID rosterID: Int?) -> FantasyTeamProfile? {
+        guard let rosterID else { return nil }
+        return teams.first { $0.rosterID == rosterID }
+    }
+}
+
+struct FantasyMatchupSnapshot: Equatable, Sendable {
+    let leagueID: String
+    let week: Int
+    let matchupID: Int?
+    let userRosterID: Int
+    let opponentRosterID: Int?
+    let userPoints: Double
+    let opponentPoints: Double?
+    let fetchedAt: Date
 }
 
 struct SportsEventDetailIdentity: Hashable, Sendable {
@@ -643,6 +974,16 @@ protocol SportsEventDetailProviding: Sendable {
     func loadSportsEventDetail(
         identity: SportsEventDetailIdentity
     ) async throws -> SportsEventDetail?
+}
+
+protocol FantasyFootballProviding: Sendable {
+    func discoverNFLLeagues(username: String) async throws -> FantasyAccountDiscovery
+    func loadLeague(leagueID: String) async throws -> FantasyLeagueProfile
+    func loadMatchup(leagueID: String, rosterID: Int) async throws -> FantasyMatchupSnapshot
+}
+
+protocol LiveNFLScoreProviding: Sendable {
+    func loadNFLScoreboard(referenceDate: Date) async throws -> [SportsScheduleEvent]
 }
 
 enum EPGLoadState: Equatable {

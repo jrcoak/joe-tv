@@ -194,7 +194,12 @@ enum HTMLCatalogParser {
         }
     }
 
-    static func parseESPNPlusEvents(_ data: Data, baseURL: URL) -> [MediaItem] {
+    static func parseESPNPlusEvents(
+        _ data: Data,
+        baseURL: URL,
+        requestedDate: Date? = nil,
+        calendar: Calendar = .current
+    ) -> [MediaItem] {
         guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
 
         let airings: [[String: Any]]
@@ -221,11 +226,17 @@ enum HTMLCatalogParser {
                 .map(dynamicDictionary)
                 .flatMap { dynamicString(in: $0, keys: ["name", "title"]) }
                 ?? "ESPN+"
-            let competition = ["subcategory", "league", "sport"].lazy.compactMap { key in
-                dynamicValue(in: game, keys: [key])
-                    .map(dynamicDictionary)
-                    .flatMap { dynamicString(in: $0, keys: ["name", "title"]) }
+            let competition = ["subcategory", "league", "sport"].lazy.compactMap {
+                dynamicNamedValue(in: game, key: $0)
             }.first ?? "ESPN+"
+            let upstreamSport = dynamicNamedValue(in: game, key: "sport")
+            guard let categoryID = SportsCategoryClassifier.categoryID(
+                title: title,
+                subtitle: competition,
+                upstreamCategory: competition,
+                sport: upstreamSport,
+                league: dynamicNamedValue(in: game, key: "league")
+            ) else { return nil }
             let imageURL = dynamicValue(in: game, keys: ["image"])
                 .map(dynamicDictionary)
                 .flatMap { dynamicString(in: $0, keys: ["url", "href"]) }
@@ -234,6 +245,28 @@ enum HTMLCatalogParser {
             let metadata = espnPlusPlaybackMetadata(playbackID)
             let type = dynamicString(in: game, keys: ["type", "airingtype"])?.lowercased()
             let isReplay = type == "replay" || metadata.contentType == "vod"
+            let startsAt = espnPlusDate(
+                in: game,
+                keys: ["startsAt", "startDateTime", "startDate", "airingStart", "startTime", "date", "start"],
+                requestedDate: requestedDate,
+                calendar: calendar
+            )
+            let endsAt = espnPlusDate(
+                in: game,
+                keys: ["endsAt", "endDateTime", "endDate", "airingEnd", "endTime", "end"],
+                requestedDate: requestedDate,
+                calendar: calendar
+            )
+            let providerDay = startsAt ?? requestedDate
+            let phaseLabel: String = {
+                if isReplay { return "Replay" }
+                if let startsAt, startsAt > Date() { return "Upcoming" }
+                if let requestedDate,
+                   calendar.startOfDay(for: requestedDate) > calendar.startOfDay(for: Date()) {
+                    return "Upcoming"
+                }
+                return "Live"
+            }()
 
             var components = URLComponents(url: baseURL.appending(path: "/PlayerDRMEP/Watch"), resolvingAgainstBaseURL: true)
             components?.queryItems = [URLQueryItem(name: "id", value: playbackID)]
@@ -241,17 +274,47 @@ enum HTMLCatalogParser {
 
             let stableID = metadata.mediaID ?? metadata.sourceID ?? playbackID
             guard seen.insert(stableID).inserted else { return nil }
-            let subtitle = [competition, network, isReplay ? "Replay" : "Live"]
+            let subtitle = [competition, network, phaseLabel]
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
+            let sportsEvent = startsAt.map { start in
+                SportsScheduleEvent(
+                    eventID: stableID,
+                    title: title,
+                    sport: SportsCategoryOption.all.first(where: { $0.id == categoryID })?.title,
+                    leagueID: nil,
+                    league: competition,
+                    startsAt: start,
+                    endsAt: endsAt,
+                    status: phaseLabel,
+                    venue: nil,
+                    country: "United States",
+                    homeTeamID: nil,
+                    homeTeam: nil,
+                    homeTeamLogoURL: nil,
+                    awayTeamID: nil,
+                    awayTeam: nil,
+                    awayTeamLogoURL: nil,
+                    homeScore: nil,
+                    awayScore: nil,
+                    thumbnailURL: imageURL,
+                    sourceDate: providerDay.map { providerDateCode($0, calendar: calendar) },
+                    sourceTime: nil,
+                    broadcasts: [SportsBroadcast(channelID: nil, channel: "ESPN+", country: "US", logoURL: nil)]
+                )
+            }
 
             return MediaItem(
                 id: "espnplus|\(stableID)",
                 title: title,
                 subtitle: subtitle,
                 imageURL: imageURL,
-                categoryID: "espnplus",
-                playback: .drmPage(pageURL)
+                categoryID: categoryID,
+                playbackOptions: [
+                    .init(id: "espnplus|\(stableID)", title: network, playback: .drmPage(pageURL))
+                ],
+                sportsEvent: sportsEvent,
+                providerEventDateCode: providerDay.map { providerDateCode($0, calendar: calendar) }
             )
         }
         .sorted { left, right in
@@ -260,6 +323,53 @@ enum HTMLCatalogParser {
             if leftReplay != rightReplay { return !leftReplay }
             return left.title.localizedStandardCompare(right.title) == .orderedAscending
         }
+    }
+
+    private static func dynamicNamedValue(in dictionary: [String: Any], key: String) -> String? {
+        guard let value = dynamicValue(in: dictionary, keys: [key]) else { return nil }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        return dynamicString(in: dynamicDictionary(value), keys: ["name", "title", "displayName"])
+    }
+
+    private static func espnPlusDate(
+        in dictionary: [String: Any],
+        keys: [String],
+        requestedDate: Date?,
+        calendar: Calendar
+    ) -> Date? {
+        guard let value = dynamicValue(in: dictionary, keys: keys) else { return nil }
+        if let parsed = dynamicDate(value) { return parsed }
+        guard let requestedDate, let time = value as? String else { return nil }
+
+        let normalizedTime = time.trimmingCharacters(in: .whitespacesAndNewlines)
+        for format in ["h:mm a", "h a", "HH:mm", "HH:mm:ss"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = format
+            guard let timeOnly = formatter.date(from: normalizedTime) else { continue }
+            let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: timeOnly)
+            return calendar.date(
+                bySettingHour: timeComponents.hour ?? 0,
+                minute: timeComponents.minute ?? 0,
+                second: timeComponents.second ?? 0,
+                of: requestedDate
+            )
+        }
+        return nil
+    }
+
+    private static func providerDateCode(_ date: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d%02d%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
     }
 
     static func footballDirectStreamTemplate(in html: String) -> String? {
@@ -382,17 +492,19 @@ enum HTMLCatalogParser {
             }
         }
 
-        var prefix: String?
-        if pageURL.path.lowercased().contains("international") {
-            prefix = firstCapture(
-                in: fairPlayBlock,
-                pattern: #"licenseServerUrl\s*=\s*["']([^"']+)["']\s*\+\s*licenseServerUrl"#
-            ).map(decodeEntities)
-        }
+        // Seasons4U's domestic and international FairPlay pages can both derive the
+        // license URL by prefixing the HTTPS form of the SKD URL. Do not key this off
+        // the page path: the domestic page uses the same proxy-based handshake.
+        let prefix = firstCapture(
+            in: fairPlayBlock,
+            pattern: #"(?m)^[ \t]*licenseServerUrl\s*=\s*["']([^"']+)["']\s*\+\s*licenseServerUrl"#
+        ).map(decodeEntities)
 
         let licenseURL = firstCapture(
             in: fairPlayBlock,
-            pattern: #"(?:LA_URL|licenseServerURL|licenseServerUrl)\s*:\s*["']([^"']+)["']"#
+            // Anchoring to an active source line prevents retired, commented-out
+            // license endpoints from becoming the configuration used by AVPlayer.
+            pattern: #"(?m)^[ \t]*(?:LA_URL|licenseServerURL|licenseServerUrl)\s*:\s*["']([^"']+)["']"#
         )
         .map(decodeEntities)
         .flatMap { absoluteURL($0, relativeTo: baseURL) }
@@ -400,12 +512,15 @@ enum HTMLCatalogParser {
         let contentIdentifierStrategy: DRMContentIdentifierStrategy = {
             if let dropCount = firstCapture(
                 in: fairPlayBlock,
-                pattern: #"(?is)replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)\s*\.substring\(\s*(\d+)\s*\)"#
+                // Only accept an executable return statement. Seasons4U keeps old
+                // transformations in // comments beside `return contentId`; parsing
+                // those comments breaks every FairPlay channel.
+                pattern: #"(?m)^[ \t]*return\s+contentId\s*\.\s*replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)\s*\.\s*substring\(\s*(\d+)\s*\)"#
             ).flatMap(Int.init) {
                 return .schemeStripped(dropFirst: dropCount)
             }
             if fairPlayBlock.range(
-                of: #"replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)"#,
+                of: #"(?m)^[ \t]*return\s+contentId\s*\.\s*replace\(\s*["']skd://["']\s*,\s*["']["']\s*\)"#,
                 options: [.regularExpression, .caseInsensitive]
             ) != nil {
                 return .schemeStripped(dropFirst: 0)

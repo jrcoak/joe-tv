@@ -125,11 +125,11 @@ private struct CatalogView: View {
     @EnvironmentObject private var model: AppModel
     @State private var confirmsSignOut = false
     @State private var showsSportsCategorySettings = false
+    @State private var showsFantasyZoneSettings = false
     @State private var showsChannelSettings = false
     @State private var homeEntryFocusRequest = 0
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
-    @State private var espnPlusEntryFocusRequest = 0
     @FocusState private var focusedDestination: AppModel.Destination?
     @FocusState private var moreIsFocused: Bool
 
@@ -157,11 +157,6 @@ private struct CatalogView: View {
                             entryFocusRequest: sportsEntryFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
-                    case .espnPlus:
-                        JoeTVESPNPlusView(
-                            entryFocusRequest: espnPlusEntryFocusRequest,
-                            onFocusNavigation: focusCurrentDestination
-                        )
                     }
                 }
                 .frame(width: geometry.size.width, alignment: .topLeading)
@@ -184,6 +179,9 @@ private struct CatalogView: View {
         .sheet(isPresented: $showsSportsCategorySettings) {
             SportsCategorySettingsView()
         }
+        .sheet(isPresented: $showsFantasyZoneSettings) {
+            FantasyZoneSettingsView()
+        }
         .sheet(isPresented: $showsChannelSettings) {
             ChannelSettingsView()
         }
@@ -201,8 +199,7 @@ private struct CatalogView: View {
                 destinationButton("Home", symbol: "house.fill", destination: .home)
                 destinationButton("Live TV", symbol: "rectangle.grid.1x2.fill", destination: .liveTV)
                 if !model.isVeryLocalOnly {
-                    destinationButton("Live Sports", symbol: "sportscourt.fill", destination: .sports)
-                    destinationButton("ESPN+", symbol: "play.rectangle.fill", destination: .espnPlus)
+                    destinationButton("Sports", symbol: "sportscourt.fill", destination: .sports)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -230,7 +227,10 @@ private struct CatalogView: View {
                         Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
                     }
                     Button { showsSportsCategorySettings = true } label: {
-                        Label("Sports Categories", systemImage: "slider.horizontal.3")
+                        Label("Sports Filters", systemImage: "slider.horizontal.3")
+                    }
+                    Button { showsFantasyZoneSettings = true } label: {
+                        Label("Fantasy Zone", systemImage: "trophy.fill")
                     }
                 }
                 Button { showsChannelSettings = true } label: {
@@ -257,7 +257,7 @@ private struct CatalogView: View {
             .focused($moreIsFocused)
             .onKeyPress(.leftArrow) {
                 moreIsFocused = false
-                focusedDestination = model.isVeryLocalOnly ? .liveTV : .espnPlus
+                focusedDestination = model.isVeryLocalOnly ? .liveTV : .sports
                 return .handled
             }
             .onKeyPress(.downArrow) {
@@ -268,7 +268,7 @@ private struct CatalogView: View {
                 switch direction {
                 case .left:
                     moreIsFocused = false
-                    focusedDestination = model.isVeryLocalOnly ? .liveTV : .espnPlus
+                    focusedDestination = model.isVeryLocalOnly ? .liveTV : .sports
                 case .down:
                     requestContentFocus(from: nil)
                 default:
@@ -337,8 +337,6 @@ private struct CatalogView: View {
             focusedDestination = .home
         case .sports:
             focusedDestination = .liveTV
-        case .espnPlus:
-            focusedDestination = .sports
         }
     }
 
@@ -356,9 +354,6 @@ private struct CatalogView: View {
                 focusedDestination = .sports
             }
         case .sports:
-            moreIsFocused = false
-            focusedDestination = .espnPlus
-        case .espnPlus:
             focusedDestination = nil
             moreIsFocused = true
         }
@@ -372,8 +367,6 @@ private struct CatalogView: View {
             liveTVEntryFocusRequest += 1
         case .sports:
             sportsEntryFocusRequest += 1
-        case .espnPlus:
-            espnPlusEntryFocusRequest += 1
         }
     }
 }
@@ -553,9 +546,9 @@ private struct SportsCategorySettingsView: View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Sports categories")
+                    Text("Sports filters")
                         .font(.system(size: 42, weight: .semibold))
-                    Text("Choose which sections appear in Sports.")
+                    Text("Choose which sports appear in the Live and Upcoming event guides.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
@@ -588,7 +581,7 @@ private struct SportsCategorySettingsView: View {
             }
 
             HStack {
-                Text("Default: Football, Baseball, Hockey, and Basketball")
+                Text("Default: All event sports")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -599,6 +592,196 @@ private struct SportsCategorySettingsView: View {
         .padding(50)
         .frame(width: 880, height: 790)
         .background(SeasonTheme.background)
+    }
+}
+
+struct FantasyZoneSettingsView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var username = ""
+    @State private var isConnecting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Fantasy Zone")
+                        .font(.system(size: 42, weight: .semibold))
+                    Text("Put your Sleeper matchup beside the live NFL scoreboard.")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+
+            Button {
+                model.setFantasyZoneEnabled(!model.fantasyZoneEnabled)
+            } label: {
+                HStack(spacing: 18) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(model.fantasyZoneEnabled ? SeasonTheme.accent : .secondary)
+                        .frame(width: 36)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Fantasy Zone in Sports")
+                            .font(.title3.weight(.medium))
+                        Text("Optional. Your saved setup stays here when the feature is hidden.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: model.fantasyZoneEnabled ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(model.fantasyZoneEnabled ? SeasonTheme.accent : .secondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(SportsSettingsRowButtonStyle())
+            .accessibilityValue(model.fantasyZoneEnabled ? "Enabled" : "Disabled")
+            .accessibilityIdentifier("settings.fantasy.enabled")
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("SLEEPER ACCOUNT")
+                    .font(.caption.weight(.semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+
+                Text("Username")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("Your Sleeper username", text: $username)
+                    .accessibilityIdentifier("settings.fantasy.username")
+
+                Text("Joe-TV finds your active NFL leagues from this username. No Sleeper password or API key is needed.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .background(SeasonTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).stroke(SeasonTheme.keyline) }
+
+            fantasyStatus
+
+            if model.fantasyLeague == nil, model.fantasyLeagueChoices.count > 1 {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("CHOOSE A LEAGUE")
+                        .font(.caption.weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(model.fantasyLeagueChoices) { league in
+                                Button {
+                                    select(league)
+                                } label: {
+                                    HStack(spacing: 14) {
+                                        Image(systemName: "trophy")
+                                            .frame(width: 30)
+                                        Text(league.name)
+                                            .font(.headline)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(SportsSettingsRowButtonStyle())
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 170)
+                }
+            }
+
+            Spacer()
+
+            HStack {
+                if model.hasFantasyConfiguration {
+                    Text("Saved on this Apple TV")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    connect()
+                } label: {
+                    if isConnecting {
+                        ProgressView()
+                            .frame(width: 190)
+                    } else {
+                        Label("Find My League", systemImage: "magnifyingglass")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isConnecting || username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("settings.fantasy.connect")
+            }
+        }
+        .padding(50)
+        .frame(width: 940, height: 760)
+        .background(SeasonTheme.background)
+        .onAppear {
+            username = model.fantasyUsername
+            if model.fantasyZoneEnabled, model.hasFantasyConfiguration, model.fantasyLeague == nil {
+                Task { await model.refreshFantasyZone(refreshNFLScoreboard: false) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fantasyStatus: some View {
+        switch model.fantasyState {
+        case .idle:
+            Label(
+                model.hasFantasyConfiguration ? "Ready to reconnect your saved league." : "Enter your username to find your NFL league.",
+                systemImage: "info.circle"
+            )
+            .foregroundStyle(.secondary)
+        case .loading:
+            Label("Checking your league and current matchup…", systemImage: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.secondary)
+        case .loaded:
+            if let league = model.fantasyLeague, let team = model.fantasyUserTeam {
+                HStack(spacing: 16) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(SeasonTheme.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(league.name)
+                            .font(.title3.weight(.semibold))
+                        Text("Connected as \(team.name)")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if model.fantasyLeagueChoices.count > 1 {
+                Label(
+                    "Found \(model.fantasyLeagueChoices.count) active NFL leagues. Choose one below.",
+                    systemImage: "list.bullet"
+                )
+                .foregroundStyle(.secondary)
+            }
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(SeasonTheme.liveSignal)
+        }
+    }
+
+    private func connect() {
+        isConnecting = true
+        Task {
+            await model.discoverFantasyZone(username: username)
+            isConnecting = false
+        }
+    }
+
+    private func select(_ league: FantasyLeagueChoice) {
+        isConnecting = true
+        Task {
+            await model.selectFantasyLeague(league.id)
+            isConnecting = false
+        }
     }
 }
 

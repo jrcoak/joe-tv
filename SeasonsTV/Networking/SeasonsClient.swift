@@ -286,7 +286,12 @@ final class SeasonsClient {
             path: "/Player/GameList_ESPNPlus",
             payload: ["ticks": ticks]
         )
-        return HTMLCatalogParser.parseESPNPlusEvents(data, baseURL: baseURL)
+        return HTMLCatalogParser.parseESPNPlusEvents(
+            data,
+            baseURL: baseURL,
+            requestedDate: day,
+            calendar: calendar
+        )
     }
 
     private func postJSON(path: String, payload: [String: Any]) async throws -> Data {

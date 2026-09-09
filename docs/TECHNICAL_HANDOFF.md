@@ -63,6 +63,8 @@ SeasonsTV/
     SeasonsClient.swift           Authentication, HTTP, payload building, stream resolution
     HTMLCatalogParser.swift       Server-rendered HTML/JavaScript contract parsing
     MediaAPIConfiguration.swift   Private build configuration and legacy credential cleanup
+    SleeperClient.swift           Read-only Sleeper league, roster, and matchup loading
+    ESPNScoreboardClient.swift    Direct live NFL scores for Fantasy Zone
     XMLTVGuideProvider.swift      MEDIA_READ_TOKEN requests, ETag caches, XMLTV parsing
     VeryLocalClient.swift         Public Hearst station catalog, EPG, and fresh HLS resolution
   Playback/
@@ -418,7 +420,11 @@ The ETag and refresh date are not secrets. The read token is never placed in Use
 
 Sports schedule requests use the same route-limited read token but call `/api/v1/sports/schedule` with `Accept: application/json`. They have separate five-minute attempt tracking, ETag, refresh timestamp, and atomic last-known-good JSON cache. The decoded event model preserves league, teams, scores, status, time, venue, thumbnail, team logos, and broadcast networks. Schedule-only events use `.unavailable`; matching a schedule record to a Seasons4U item enriches presentation while preserving the Seasons4U playback identity and options. The UI prefers the schedule thumbnail, then composes high-resolution home/away logos, and uses Seasons4U artwork only as the last fallback.
 
+Fantasy Zone does not use this daily Personal Media sports snapshot for live scoring. It loads the user's league and matchup directly from Sleeper, while `ESPNScoreboardClient` polls ESPN's NFL scoreboard directly every 30 seconds while Fantasy Zone is visible. The client holds a 20-second in-memory minimum refresh interval, requests the active NFL window through Tuesday, accepts ESPN timestamps with fractional seconds, whole seconds, or minute precision, and maps status, scores, team artwork, venue, and broadcasts into the shared sports event model. Live games appear while any are in progress; otherwise Fantasy Zone presents the remaining week schedule through Tuesday. Scoreboard failures and weeks with no remaining events stay silent rather than exposing transport or decoder errors in the television UI. When an ESPN event ID also exists in the ordinary Sports guide, Joe-TV attaches the existing playable stream options; otherwise the game remains a score-only card. NFL RedZone and NFL Network appear as dedicated Fantasy Zone watch choices whenever those enabled Seasons4U channels are available. Any channel or game launched from Fantasy Zone uses a distinct playback presentation: video occupies the main surface while a persistent left rail keeps the Sleeper matchup and up to five live NFL scores visible. Ordinary playback remains full-screen, and the player controls return directly to Fantasy Zone.
+
 Event-detail reads use the same token and only the NFL, MLB, NBA, and NHL route identities derived from a published schedule event. AppModel immediately renders schedule/team data, then prefetches the featured event plus four nearby events in batches of two. Focus outside that window is debounced by 350 ms and cancellation-safe, so rapid scrolling never waits on metadata. Each detail has an independent ETag and atomic Caches-directory fallback. The featured card prefers the published hero image and displays the normalized headline, description, and detailed status when available; 404 or stale data leaves the schedule/playback UI intact.
+
+Sports catalog consolidation runs only when its Seasons4U, ESPN+, or schedule source changes and is stored on `AppModel`; ordinary focus movement reads the cached result rather than repeating the normalization and source-matching pass. The Sports view derives its live/upcoming slices once per render, handles event focus from one root listener, and publishes prefetched detail results once per two-item batch. These boundaries keep Siri Remote focus changes independent from catalog parsing and limit metadata prefetch redraws.
 
 ### Parsing and mapping
 
@@ -482,6 +488,8 @@ AVPlayer failures are separate because they occur after the network orchestratio
 - XMLTV numeric-only station matching, overlap filtering, metadata, and ordering;
 - normalized sports JSON decoding, network/logo preservation, and schedule-to-playback enrichment without playback-identity changes;
 - allowlisted event-detail routing and decoding through Personal Media API, including hero, venue, status, and ETag-compatible identity fields;
+- Sleeper league/user-to-roster mapping, current-week selection, opponent pairing, and custom-scoring totals;
+- direct ESPN NFL scoreboard mapping, including live status, scores, team artwork, and broadcasts;
 - escaped HLS URL parsing;
 - FPS HLS/certificate/header/international-proxy parsing.
 - the fixed 29-channel Very Local station directory, namespaced playback identities, and public-playback model cases.
@@ -504,6 +512,8 @@ swiftc \
   SeasonsTV/Networking/MediaAPIConfiguration.swift \
   SeasonsTV/Networking/HTMLCatalogParser.swift \
   SeasonsTV/Networking/SeasonsClient.swift \
+  SeasonsTV/Networking/SleeperClient.swift \
+  SeasonsTV/Networking/ESPNScoreboardClient.swift \
   SeasonsTV/Networking/XMLTVGuideProvider.swift \
   SeasonsTV/Networking/VeryLocalClient.swift \
   SeasonsTV/Networking/PBSLiveClient.swift \
@@ -612,9 +622,11 @@ For an incoming engineer, read the code in this order:
 5. `SeasonsTV/Models/Models.swift` — domain and playback ownership.
 6. `SeasonsTV/Networking/MediaAPIConfiguration.swift` — private build configuration validation and legacy schedule-token cleanup.
 7. `SeasonsTV/Networking/XMLTVGuideProvider.swift` — route-scoped read-token requests, ETag caches, and XMLTV parser.
-8. `SeasonsTV/Playback/FairPlayResourceLoader.swift` — FPS exchange.
-9. `SeasonsTV/Views/RootView.swift` — login, guide, catalog UI, and schedule failure presentation.
-10. `SeasonsTV/Views/PlayerScreen.swift` — AVPlayer presentation.
-11. `Tests/ParserSmoke.swift` — executable examples of expected upstream shapes.
+8. `SeasonsTV/Networking/SleeperClient.swift` — read-only Fantasy Zone league and matchup requests.
+9. `SeasonsTV/Networking/ESPNScoreboardClient.swift` — direct, short-lived live NFL scores for Fantasy Zone.
+10. `SeasonsTV/Playback/FairPlayResourceLoader.swift` — FPS exchange.
+11. `SeasonsTV/Views/RootView.swift` — login, guide, catalog UI, and schedule failure presentation.
+12. `SeasonsTV/Views/PlayerScreen.swift` — AVPlayer presentation.
+13. `Tests/ParserSmoke.swift` — executable examples of expected upstream shapes.
 
 This order follows the actual data flow and makes implicit upstream assumptions visible before UI details.

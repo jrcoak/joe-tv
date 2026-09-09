@@ -246,6 +246,139 @@ enum ParserSmoke {
               detailIdentity.cacheKey == "football/nfl/401772510" else {
             fatalError("ESPN event identity was not restricted to an allowlisted league")
         }
+
+        let espnScoreboardJSON = Data(#"""
+        {
+          "events": [
+            {
+              "id": "401872657",
+              "name": "San Francisco 49ers at Los Angeles Rams",
+              "date": "2026-09-11T00:35Z",
+              "status": {
+                "type": {
+                  "state": "in",
+                  "completed": false,
+                  "description": "In Progress",
+                  "detail": "3rd Quarter",
+                  "shortDetail": "3rd · 7:42"
+                }
+              },
+              "competitions": [
+                {
+                  "date": "2026-09-11T00:35Z",
+                  "venue": {
+                    "fullName": "Example Stadium",
+                    "address": {"country": "USA"}
+                  },
+                  "broadcasts": [{"names": ["ESPN"]}],
+                  "status": {
+                    "type": {
+                      "state": "in",
+                      "completed": false,
+                      "description": "In Progress",
+                      "detail": "3rd Quarter",
+                      "shortDetail": "3rd · 7:42"
+                    }
+                  },
+                  "competitors": [
+                    {
+                      "homeAway": "home",
+                      "score": "20",
+                      "team": {
+                        "id": "14",
+                        "displayName": "Los Angeles Rams",
+                        "logo": "https://a.espncdn.com/lar.png"
+                      }
+                    },
+                    {
+                      "homeAway": "away",
+                      "score": "17",
+                      "team": {
+                        "id": "25",
+                        "displayName": "San Francisco 49ers",
+                        "logo": "https://a.espncdn.com/sf.png"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        """#.utf8)
+        guard let espnScoreboard = try? ESPNScoreboardParser.decode(espnScoreboardJSON),
+              let espnGame = espnScoreboard.first,
+              espnGame.eventID == "401872657",
+              espnGame.leagueID == "nfl",
+              espnGame.homeTeam == "Los Angeles Rams",
+              espnGame.awayTeam == "San Francisco 49ers",
+              espnGame.homeScore == 20,
+              espnGame.awayScore == 17,
+              espnGame.status == "Live · 3rd · 7:42",
+              espnGame.homeTeamLogoURL?.host == "a.espncdn.com",
+              espnGame.broadcastChannels == ["ESPN"] else {
+            fatalError("Direct ESPN NFL scoreboard metadata was not decoded")
+        }
+        var nflWeekCalendar = Calendar(identifier: .gregorian)
+        nflWeekCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let nflWeekWednesday = Date(timeIntervalSince1970: 1_788_955_200)
+        guard ESPNScoreboardClient.dateRangeKey(
+            nflWeekWednesday,
+            calendar: nflWeekCalendar
+        ) == "20260909-20260915" else {
+            fatalError("Direct ESPN NFL scoreboard range no longer runs through Tuesday")
+        }
+
+        let sleeperLeagueJSON = Data(#"{"league_id":"123456789","name":"Sunday Ticket Society","avatar":"league-avatar"}"#.utf8)
+        let sleeperUsersJSON = Data(#"[{"user_id":"987654321","username":"joe","display_name":"Joe","avatar":"joe-avatar","metadata":{"team_name":"Fourth & Long"}},{"user_id":"111222333","username":"opponent","display_name":"Opponent","avatar":null,"metadata":{"team_name":"Sunday Scaries"}}]"#.utf8)
+        let sleeperRostersJSON = Data(#"[{"roster_id":3,"owner_id":"987654321"},{"roster_id":8,"owner_id":"111222333"}]"#.utf8)
+        guard let sleeperLeague = try? SleeperAPIParser.league(
+            leagueData: sleeperLeagueJSON,
+            usersData: sleeperUsersJSON,
+            rostersData: sleeperRostersJSON
+        ),
+              sleeperLeague.id == "123456789",
+              sleeperLeague.team(forUserID: "987654321")?.rosterID == 3,
+              sleeperLeague.team(forRosterID: 8)?.name == "Sunday Scaries",
+              sleeperLeague.team(forUserID: "987654321")?.avatarURL?.host == "sleepercdn.com" else {
+            fatalError("Sleeper league users were not mapped to their rosters")
+        }
+
+        let sleeperUserJSON = Data(#"{"user_id":"987654321","username":"jrcoakley","display_name":"JR Coakley","avatar":"joe-avatar"}"#.utf8)
+        guard let sleeperUser = try? SleeperAPIParser.user(data: sleeperUserJSON),
+              sleeperUser.id == "987654321",
+              sleeperUser.username == "jrcoakley",
+              sleeperUser.avatarURL?.host == "sleepercdn.com",
+              (try? SleeperAPIParser.validatedUsername(" jrcoakley ")) == "jrcoakley" else {
+            fatalError("Sleeper username lookup was not decoded")
+        }
+
+        let sleeperLeagueChoicesJSON = Data(#"[{"league_id":"123456789","name":"Real Men","avatar":null}]"#.utf8)
+        guard let sleeperChoices = try? SleeperAPIParser.leagueChoices(data: sleeperLeagueChoicesJSON),
+              sleeperChoices.map(\.name) == ["Real Men"] else {
+            fatalError("Sleeper active league discovery was not decoded")
+        }
+
+        let sleeperStateJSON = Data(#"{"week":2,"leg":3,"display_week":4,"season":"2025","league_season":"2026"}"#.utf8)
+        guard let sleeperState = try? SleeperAPIParser.nflState(data: sleeperStateJSON),
+              sleeperState.week == 3,
+              sleeperState.season == "2026" else {
+            fatalError("Sleeper current NFL scoring week was not decoded")
+        }
+
+        let sleeperMatchupsJSON = Data(#"[{"roster_id":3,"matchup_id":4,"points":101.25,"custom_points":104.36},{"roster_id":8,"matchup_id":4,"points":97.18,"custom_points":null}]"#.utf8)
+        guard let sleeperMatchup = try? SleeperAPIParser.matchup(
+            leagueID: sleeperLeague.id,
+            rosterID: 3,
+            week: 3,
+            data: sleeperMatchupsJSON
+        ),
+              sleeperMatchup.opponentRosterID == 8,
+              sleeperMatchup.userPoints == 104.36,
+              sleeperMatchup.opponentPoints == 97.18 else {
+            fatalError("Sleeper matchup pairing or custom scoring was not decoded")
+        }
+
         let seriesReference = ISO8601DateFormatter().date(from: "2026-08-31T12:00:00Z")!
         func baseballSeriesEvent(id: String, startsAt: Date, status: String = "Scheduled") -> SportsScheduleEvent {
             SportsScheduleEvent(
@@ -307,6 +440,22 @@ enum ParserSmoke {
               repeatedSeriesItems.first(where: { $0.id == seriesPlayback.id })?.sportsEvent?.eventID == "past",
               repeatedSeriesItems.first(where: { $0.sportsEvent?.eventID == "today" })?.isPlayable == false else {
             fatalError("Repeated series games were collapsed or attached to the wrong playback item")
+        }
+        let upcomingBaseball = SportsEventGuidePolicy.filteredItems(
+            repeatedSeriesItems,
+            scope: .upcoming,
+            selectedCategoryIDs: ["baseball"],
+            at: seriesReference
+        )
+        let liveBaseballAtReference = SportsEventGuidePolicy.filteredItems(
+            repeatedSeriesItems,
+            scope: .live,
+            selectedCategoryIDs: ["baseball"],
+            at: seriesReference
+        )
+        guard upcomingBaseball.compactMap({ $0.sportsEvent?.eventID }) == ["today", "tomorrow"],
+              liveBaseballAtReference.isEmpty else {
+            fatalError("Sports Live/Upcoming filtering no longer separates today and tomorrow from completed games")
         }
         let prematureTodayStream = MediaItem(
             id: "premature-today-stream",
@@ -459,6 +608,18 @@ enum ParserSmoke {
               !footballPlaybackItem.isGenericSportsChannelShortcut else {
             fatalError("Generic ESPN channel shortcuts were not distinguished from scheduled sports events")
         }
+        let espnStudioShow = MediaItem(
+            id: "espn-studio",
+            title: "College Football Countdown Presented by Example",
+            subtitle: "Live",
+            imageURL: nil,
+            categoryID: "football",
+            playback: .hls(URL(string: "https://media.example/studio/master.m3u8")!)
+        )
+        guard SportsCategoryClassifier.categoryID(for: espnStudioShow) == nil,
+              SportsCategoryClassifier.categoryID(for: footballPlaybackItem) == "football" else {
+            fatalError("ESPN studio shows must be excluded without hiding actual games")
+        }
 
         let espnPlusLivePlaybackID = try! JSONSerialization.data(withJSONObject: [
             "channelId": "espn-unlimited-court-7",
@@ -499,6 +660,7 @@ enum ParserSmoke {
         guard espnPlusItems.count == 2,
               espnPlusItems[0].id == "espnplus|live-media-7",
               espnPlusItems[0].title == "US Open Court 7",
+              espnPlusItems[0].categoryID == "tennis",
               espnPlusItems[0].subtitle == "US Open · ESPN Unlimited · Live",
               espnPlusItems[0].imageURL?.path == "/us-open-live.jpg",
               espnPlusItems[0].sportsPhase(at: Date()) == .live,
@@ -509,6 +671,49 @@ enum ParserSmoke {
               URLComponents(url: espnPlusPage, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "id" })?.value == espnPlusLivePlaybackID else {
             fatalError("ESPN+ live/replay metadata or FairPlay page identity was not parsed")
+        }
+        guard SportsCategoryClassifier.categoryID(
+            title: "NCAA Women's Volleyball",
+            upstreamCategory: "NCAA Women's Volleyball"
+        ) == "volleyball",
+              SportsCategoryClassifier.categoryID(
+                title: "Spanish LALIGA",
+                upstreamCategory: "Spanish LALIGA"
+              ) == "soccer",
+              SportsCategoryClassifier.categoryID(
+                title: "NASCAR O'Reilly Auto Parts Series",
+                upstreamCategory: "NASCAR"
+              ) == "racing",
+              SportsCategoryClassifier.categoryID(
+                title: "Pardon the Interruption",
+                upstreamCategory: "Studio"
+              ) == nil else {
+            fatalError("The sampled ESPN+ taxonomy is no longer normalized into stable sports filters")
+        }
+
+        let espnDuplicate = MediaItem(
+            id: "espnplus|football-duplicate",
+            title: "New York Giants at New England Patriots",
+            subtitle: "NFL · ESPN+ · Live",
+            imageURL: nil,
+            categoryID: "football",
+            playbackOptions: [
+                .init(
+                    id: "espnplus|football-duplicate",
+                    title: "ESPN+",
+                    playback: .drmPage(URL(string: "https://seasons4u.com/PlayerDRMEP/Watch?id=duplicate")!)
+                )
+            ],
+            sportsEvent: event
+        )
+        let consolidatedSports = SportsEventGuidePolicy.consolidatedItems(
+            categories: enrichedSports,
+            espnPlusItems: [espnDuplicate]
+        )
+        guard consolidatedSports.count == 1,
+              consolidatedSports[0].playbackOptions.count == 2,
+              SportsEventGuidePolicy.sourceLabels(for: consolidatedSports[0]) == ["S4U", "ESPN+"] else {
+            fatalError("Matching S4U and ESPN+ events were not folded into one event with both sources")
         }
 
         let html = #"""
@@ -1230,6 +1435,48 @@ enum ParserSmoke {
               drm.headers["Env"] == "production",
               drm.licenseProxyPrefix == "https://fairplay-proxy.example/" else {
             fatalError("FairPlay configuration was not parsed")
+        }
+
+        let domesticDRMHTML = #"""
+        <script>
+          var source = {
+            hls: 'https://linear.example/domestic/master.m3u8',
+            drm: {
+              widevine: {
+                LA_URL: '/PlayerDRMBChannels/License_/?id=widevine'
+              },
+              fairplay: {
+                certificateURL: '/PlayerDRMChannels/License__?id=domestic',
+                getLicenseServerUrl: function(t) {
+                  var licenseServerUrl = t.replace("skd://", "https://");
+                  licenseServerUrl = "https://fairplay-proxy.example/" + licenseServerUrl;
+                  return licenseServerUrl;
+                },
+                prepareContentId: function(contentId) {
+                  return contentId;
+                  // return contentId.replace('skd://', '').substring(1);
+                },
+                prepareLicense: function(license) {
+                  return new Uint8Array(license);
+                },
+                licenseResponseType: 'arraybuffer'
+              }
+            }
+          };
+        </script>
+        """#
+        let domesticPageURL = URL(string: "https://seasons4u.com/PlayerDRMChannels/domestic")!
+        let domesticSKDURL = URL(string: "skd://domestic-content-id")!
+        guard let domesticDRM = HTMLCatalogParser.parseDRMConfiguration(
+            domesticDRMHTML,
+            pageURL: domesticPageURL,
+            baseURL: baseURL
+        ),
+              domesticDRM.licenseProxyPrefix == "https://fairplay-proxy.example/",
+              domesticDRM.licenseURL == nil,
+              domesticDRM.contentIdentifierStrategy == .fullSKDURL,
+              domesticDRM.contentIdentifierStrategy.identifier(for: domesticSKDURL) == domesticSKDURL.absoluteString else {
+            fatalError("Domestic FairPlay proxy or content identifier was parsed incorrectly")
         }
 
         let espnDRMHTML = #"""
