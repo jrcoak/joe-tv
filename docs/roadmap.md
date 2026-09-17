@@ -1,9 +1,9 @@
 # Joe-TV improvement roadmap
 
-Status: **S1/S2 offline checks passed; final UI verification blocked by computer-control timeout. S3 guide merge preservation is integrated for offline QA.** TEAM-4 with TEAM-019/021/022/024 governs these cycles. Remaining packages are future candidates.
+Status: **S1/S2 offline checks passed; final UI verification blocked by computer-control timeout. S3 guide merge preservation passed independent offline QA.** TEAM-4 with TEAM-019/021/022/024 governs these cycles. Remaining packages are future candidates.
 Joe's priority is a polished, responsive app with intuitive navigation and fewer heavy click paths. Preserve its live-TV/sports identity and existing visual direction.
 
-S1 implements **ordinary watching and returning**; S2 adds Channels readability, validated guide/sports caches and measured timestamp reuse. Home/Sports/favorites and staged Fantasy returns passed on the original S1 candidate. Its guide input failure has a preview-only correction that builds but awaits UI verification; the Mac locked before that comparison. A sidebar and favorite-team Home remain later experiments. See the current cycle summary in `sprints/quality-cycles.md`.
+S1 implements **ordinary watching and returning**; S2 adds Channels readability, validated guide/sports caches and measured timestamp reuse; S3 retains applicable listings through partial guide refreshes and preserves source age. Home/Sports/favorites and staged Fantasy returns passed on the original S1 candidate. Its guide input failure has a preview-only correction that builds but awaits UI verification; the Mac locked before that comparison. A sidebar and favorite-team Home remain later experiments. See the current cycle summary in `sprints/quality-cycles.md`.
 
 ## What the competitive research changes
 

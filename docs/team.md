@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1/S2 offline QA passed; UI access times out; S3 guide merge integrated for offline QA.** M0/R1 setup and research complete. See docs/assignments/S3.md for active source ownership.
+Status: **S1/S2 offline QA passed; UI access times out; S3 guide merge also passed independent offline QA.** M0/R1 setup and research complete. See docs/assignments/S3.md for active source ownership.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -15,7 +15,7 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 | tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s3-review` | S3 App review complete |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
 | Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-s3` | S3-SERVICES complete |
-| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s2-ui` | S2-QA UI access timeout; runtime released |
+| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s3-offline` | S3 offline QA complete; UI access pending |
 | SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s3-review` | S3 SecOps review complete |
 
 PM owns this roster. Task titles are descriptive; route by exact ID. Worktrees and branch names are recorded from actual task reports rather than guessed.
@@ -61,3 +61,7 @@ Joe retained WBZ only from stream research and requested continued app work. Ser
 ## S3 integrated source checkpoint
 
 Services source `88061c7fbf8a4e41e90ed4e3d10b1dbd7b25272e` and report `f3aa27c33ee55a03e7c40a937aa81bedee06644f` are integrated. App report `e7f792c` and SecOps report `7223ffb3eafea05009410cb573f2ed4c9f967277` found no material integration blocker; both are source-only review. PM verified assigned source scope. QA receives the exact next commit for merge/smoke/build and a separately preserved S3 artifact. No UI attempt is included; S1/S2 visual acceptance is still pending computer-control access.
+
+## Final September 17 offline checkpoint
+
+QA report `5ba967367f25a938c42aef061f23f270c3c8819f` is integrated. Candidate `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d` freshly passed guide merge, full parser smoke and unsigned build; S3 source equality with reviewed `88061c7` was independently verified. Saved S3 app: `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S3-combined-artifact/Joe-TV.app`. Prior S1/S2 artifact hashes remain unchanged. All specialists are idle and compilation/runtime ownership is released. Original main checkout was freshly verified at `138c271` with only unrelated SHELF untracked. Final visual/async acceptance remains pending; see `sprints/quality-cycles.md`.
