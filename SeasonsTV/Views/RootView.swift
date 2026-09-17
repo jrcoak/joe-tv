@@ -443,24 +443,27 @@ private struct ChannelSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Channels")
-                        .font(.system(size: 42, weight: .semibold))
-                    Text("Choose which channels appear in Live TV and which favorites appear on Home.")
-                        .font(.title3)
+                        .font(.system(size: 40, weight: .semibold))
+                    Text("Choose channels for Live TV and favorites for Home.")
+                        .font(.system(size: 20))
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 650, alignment: .leading)
                 }
                 Spacer()
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ChannelSettingsButtonStyle(minimumWidth: 140, minimumHeight: 64))
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     Text("PLAYBACK")
-                        .font(.caption.weight(.semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .tracking(1.2)
                         .foregroundStyle(.secondary)
 
@@ -474,27 +477,27 @@ private struct ChannelSettingsView: View {
                                 .font(.system(size: 22, weight: .semibold))
                                 .frame(width: 34)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Up/Down button channel surfing")
-                                    .font(.title3.weight(.medium))
-                                Text("Optional. When off, directional gestures reveal playback controls.")
-                                    .font(.callout)
+                                Text("Change channels with Up/Down")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .lineLimit(1)
+                                Text("When off, directional gestures show playback controls.")
+                                    .font(.system(size: 17))
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(2)
                             }
                             Spacer()
-                            Image(
-                                systemName: model.directionalChannelSurfingEnabled
-                                    ? "checkmark.circle.fill"
-                                    : "circle"
+                            Label(
+                                model.directionalChannelSurfingEnabled ? "Enabled" : "Disabled",
+                                systemImage: model.directionalChannelSurfingEnabled
+                                    ? "checkmark.circle.fill" : "circle"
                             )
-                            .foregroundStyle(
-                                model.directionalChannelSurfingEnabled
-                                    ? SeasonTheme.accent
-                                    : .secondary
-                            )
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 17, weight: .medium))
+                            .fixedSize()
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(SportsSettingsRowButtonStyle())
+                    .buttonStyle(ChannelSettingsButtonStyle(minimumHeight: 96))
                     .accessibilityValue(
                         model.directionalChannelSurfingEnabled ? "Enabled" : "Disabled"
                     )
@@ -502,7 +505,7 @@ private struct ChannelSettingsView: View {
 
                     ForEach(sections) { section in
                         Text(section.title.uppercased())
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .tracking(1.2)
                             .foregroundStyle(.secondary)
                             .padding(.top, 8)
@@ -524,18 +527,24 @@ private struct ChannelSettingsView: View {
                                             outerPadding: 3,
                                             artworkPadding: 5
                                         )
-                                        .frame(width: 96, height: 56)
+                                        .frame(width: 80, height: 48)
 
                                         Text(channel.name)
-                                            .font(.title3.weight(.medium))
-                                            .lineLimit(1)
-                                        Spacer()
-                                        Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(isEnabled ? SeasonTheme.accent : .secondary)
+                                            .font(.system(size: 22, weight: .semibold))
+                                            .lineLimit(2)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Label(
+                                            isEnabled ? "Enabled" : "Disabled",
+                                            systemImage: isEnabled ? "checkmark.circle.fill" : "circle"
+                                        )
+                                        .labelStyle(.titleAndIcon)
+                                        .font(.system(size: 17, weight: .medium))
+                                        .fixedSize()
                                     }
                                     .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(SportsSettingsRowButtonStyle())
+                                .buttonStyle(ChannelSettingsButtonStyle(minimumHeight: 88))
+                                .frame(maxWidth: .infinity)
                                 .accessibilityLabel("\(channel.name), Live TV")
                                 .accessibilityValue(isEnabled ? "Enabled" : "Disabled")
                                 .accessibilityIdentifier("settings.channel.\(channel.id)")
@@ -543,16 +552,17 @@ private struct ChannelSettingsView: View {
                                 Button {
                                     model.setChannelFavorite(channel.id, favorite: !isFavorite)
                                 } label: {
-                                    VStack(spacing: 4) {
+                                    HStack(spacing: 8) {
                                         Image(systemName: isFavorite ? "star.fill" : "star")
                                             .font(.system(size: 20, weight: .semibold))
-                                            .foregroundStyle(isFavorite ? SeasonTheme.focusVolt : .secondary)
-                                        Text("Favorite")
-                                            .font(.caption.weight(.semibold))
+                                        Text(isFavorite ? "Favorited" : "Favorite")
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .lineLimit(1)
                                     }
-                                    .frame(width: 92)
+                                    .fixedSize(horizontal: true, vertical: false)
                                 }
-                                .buttonStyle(SportsSettingsRowButtonStyle())
+                                .buttonStyle(ChannelSettingsButtonStyle(minimumWidth: 170, minimumHeight: 88))
+                                .fixedSize(horizontal: true, vertical: false)
                                 .accessibilityLabel("\(channel.name), Favorite")
                                 .accessibilityValue(isFavorite ? "Yes" : "No")
                                 .accessibilityIdentifier("settings.favorite.\(channel.id)")
@@ -560,26 +570,61 @@ private struct ChannelSettingsView: View {
                         }
                     }
                 }
+                // Keep scaled focus shapes inside the scroll viewport.
+                .padding(10)
             }
 
-            HStack {
+            HStack(spacing: 16) {
                 Text("\(enabledCount) enabled · \(model.favoriteChannelIDs.count) favorites")
-                    .font(.callout)
+                    .font(.system(size: 18))
                     .foregroundStyle(.secondary)
-                Spacer()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
                 Button("Clear Favorites") { model.clearFavoriteChannels() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChannelSettingsButtonStyle(minimumWidth: 190, minimumHeight: 64))
+                    .fixedSize(horizontal: true, vertical: false)
                     .disabled(model.favoriteChannelIDs.isEmpty)
                 Button("Restore Defaults") { model.restoreDefaultChannels() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChannelSettingsButtonStyle(minimumWidth: 210, minimumHeight: 64))
+                    .fixedSize(horizontal: true, vertical: false)
                 Button("Enable All") { model.enableAllChannels() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(ChannelSettingsButtonStyle(minimumWidth: 150, minimumHeight: 64))
+                    .fixedSize(horizontal: true, vertical: false)
                     .disabled(enabledCount == model.availableLiveChannels.count)
             }
         }
-        .padding(50)
-        .frame(width: 920, height: 820)
+        .padding(44)
+        .frame(width: 1100, height: 840)
         .background(SeasonTheme.background)
+    }
+}
+
+private struct ChannelSettingsButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var minimumWidth: CGFloat = 0
+    let minimumHeight: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        let hasFocus = isFocused && isEnabled
+        configuration.label
+            .font(.system(size: 18, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .frame(minWidth: minimumWidth, minHeight: minimumHeight)
+            .background(hasFocus ? Color.white : SeasonTheme.surface)
+            .foregroundStyle(hasFocus ? Color.black : Color.white.opacity(isEnabled ? 1 : 0.55))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(hasFocus ? Color.white : SeasonTheme.keyline, lineWidth: hasFocus ? 2 : 1)
+            }
+            .scaleEffect(hasFocus && !reduceMotion ? 1.012 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hasFocus)
     }
 }
 
