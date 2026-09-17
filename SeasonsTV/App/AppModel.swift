@@ -28,7 +28,7 @@ final class AppModel: ObservableObject {
     @Published var categories: [CatalogCategory] = []
     @Published var liveChannels: [LiveChannel] = []
     @Published private(set) var availableLiveChannels: [LiveChannel] = []
-    @Published var selectedCategoryID = "football"
+    @Published var selectedCategoryID = "nfl"
     @Published var destination: Destination = .home
     @Published var liveSearchQuery = ""
     @Published var selectedChannelGenre: ChannelGenre?
@@ -92,11 +92,14 @@ final class AppModel: ObservableObject {
     private var sportsDetailFocusTask: Task<Void, Never>?
     private var hasStoredFavoriteChannelSelection: Bool
     private var playbackTransitionID = UUID()
+    private var browseBackSuppressionDeadline = Date.distantPast
     #if DEBUG
     private var debugQuickSwitchTargetIDs: Set<String> = []
     #endif
 
     private static let enabledSportsCategoriesKey = "sports.enabledCategories"
+    private static let sportsCategoryTaxonomyVersionKey = "sports.categoryTaxonomyVersion"
+    private static let currentSportsCategoryTaxonomyVersion = 2
     private static let disabledChannelsKey = "channels.disabledIDs"
     private static let favoriteChannelsKey = "channels.favoriteIDs"
     private static let favoriteDefaultsVersionKey = "channels.favoriteDefaultsVersion"
@@ -182,16 +185,24 @@ final class AppModel: ObservableObject {
             self.hasStoredFavoriteChannelSelection = false
         }
         if let stored = defaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
-            let supported = Set(SportsCategoryOption.all.map(\.id))
-            var normalized = Set(stored).intersection(supported)
-            if stored.contains("college") { normalized.insert("football") }
+            let storedSelection = Set(stored)
+            let normalized: Set<String>
+            if defaults.integer(forKey: Self.sportsCategoryTaxonomyVersionKey) < Self.currentSportsCategoryTaxonomyVersion {
+                normalized = SportsCategoryOption.migratingLegacySelection(storedSelection)
+            } else {
+                normalized = storedSelection.intersection(Set(SportsCategoryOption.all.map(\.id)))
+            }
             self.enabledSportsCategoryIDs = normalized
-            if normalized != Set(stored) {
+            if normalized != storedSelection {
                 defaults.set(Array(normalized).sorted(), forKey: Self.enabledSportsCategoriesKey)
             }
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
+        defaults.set(
+            Self.currentSportsCategoryTaxonomyVersion,
+            forKey: Self.sportsCategoryTaxonomyVersionKey
+        )
         self.directionalChannelSurfingEnabled = defaults.bool(
             forKey: Self.directionalChannelSurfingKey
         )
@@ -201,6 +212,11 @@ final class AppModel: ObservableObject {
         self.fantasyUserID = defaults.string(forKey: Self.fantasyUserIDKey) ?? ""
         adoptNewDefaultFavoritesIfNeeded()
         #if DEBUG
+        if let subtitleFixture = ProcessInfo.processInfo.environment["JOE_TV_DEBUG_CAPTIONS_URL"],
+           let subtitleFixtureURL = URL(string: subtitleFixture) {
+            configureCaptionsDebugFixture(url: subtitleFixtureURL)
+            return
+        }
         if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_ZONE"] == "1" {
             configureFantasyZoneDebugFixture()
             return
@@ -234,7 +250,7 @@ final class AppModel: ObservableObject {
                 title: event.title,
                 subtitle: event.status,
                 imageURL: playableItem?.imageURL ?? event.thumbnailURL,
-                categoryID: "football",
+                categoryID: "nfl",
                 playbackOptions: playableItem?.playbackOptions ?? [
                     MediaItem.PlaybackOption(
                         id: "scoreboard-only",
@@ -769,7 +785,7 @@ final class AppModel: ObservableObject {
     private func reconcileSelectedCategory() {
         let visible = visibleSportsCategories
         if !visible.contains(where: { $0.id == selectedCategoryID }) {
-            selectedCategoryID = visible.first?.id ?? "football"
+            selectedCategoryID = visible.first?.id ?? "nfl"
             lastFocusedEventID = nil
         }
     }
@@ -1143,8 +1159,7 @@ final class AppModel: ObservableObject {
             return try await makePreviewSession(for: channel)
 
         case .sports(let categoryID, let itemID):
-            guard let item = mediaItem(categoryID: categoryID, itemID: itemID, in: categories)
-                ?? mediaItem(categoryID: categoryID, itemID: itemID, in: playbackCategories),
+            guard let item = sportsMediaItem(categoryID: categoryID, itemID: itemID),
                   item.sportsPhase(at: Date()) == .live,
                   item.sportsPlaybackAvailable(at: Date()) else {
                 throw SeasonsError.message("That event is no longer live.")
@@ -1256,6 +1271,24 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    private func configureCaptionsDebugFixture(url: URL) {
+        let channel = LiveChannel(
+            id: "debug:captions",
+            name: "Caption Test Stream",
+            logoURL: nil,
+            playback: .request(PlaybackRequest(endpoint: "debug", controller: "debug", arguments: [])),
+            genre: .entertainment
+        )
+        let target = makePlaybackTarget(channel)
+        liveChannels = [channel]
+        availableLiveChannels = [channel]
+        screen = .catalog
+        installPlaybackSession(
+            PlaybackSession(title: channel.name, url: url),
+            target: target
+        )
+    }
+
     private func configureFantasyZoneDebugFixture() {
         let now = Date()
         let showsUpcoming = ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_UPCOMING"] == "1"
@@ -1304,7 +1337,7 @@ final class AppModel: ObservableObject {
                 title: event.title,
                 subtitle: status,
                 imageURL: nil,
-                categoryID: "football",
+                categoryID: "nfl",
                 playback: .request(request),
                 sportsEvent: event
             )
@@ -1343,7 +1376,7 @@ final class AppModel: ObservableObject {
         liveChannels = fantasyChannels
         availableLiveChannels = fantasyChannels
 
-        playbackCategories = [CatalogCategory(id: "football", title: "Football", symbol: "football.fill", items: games)]
+        playbackCategories = [CatalogCategory(id: "nfl", title: "NFL", symbol: "football.fill", items: games)]
         categories = playbackCategories
         rebuildConsolidatedSportsItems()
         sportsSchedule = SportsScheduleSnapshot(
@@ -1364,15 +1397,72 @@ final class AppModel: ObservableObject {
         fantasyLeagueChoices = [
             FantasyLeagueChoice(id: fantasyLeagueID, name: "Sunday Ticket Society", avatarURL: nil)
         ]
+        let fantasyTeams = [
+            FantasyTeamProfile(rosterID: 3, userID: fantasyUserID, name: "Fourth & Long", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 8, userID: "opponent", name: "Sunday Scaries", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 1, userID: "one", name: "Gridiron Ghosts", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 2, userID: "two", name: "The Waiver Wire", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 4, userID: "four", name: "Goal Line Stand", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 5, userID: "five", name: "Hail Mary Club", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 6, userID: "six", name: "Sunday Best", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 7, userID: "seven", name: "Two Minute Drill", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 9, userID: "nine", name: "The Audible", avatarURL: nil),
+            FantasyTeamProfile(rosterID: 10, userID: "ten", name: "End Zone Theory", avatarURL: nil)
+        ]
         fantasyLeague = FantasyLeagueProfile(
             id: fantasyLeagueID,
             name: "Sunday Ticket Society",
             avatarURL: nil,
-            teams: [
-                FantasyTeamProfile(rosterID: 3, userID: fantasyUserID, name: "Fourth & Long", avatarURL: nil),
-                FantasyTeamProfile(rosterID: 8, userID: "opponent", name: "Sunday Scaries", avatarURL: nil)
-            ]
+            teams: fantasyTeams
         )
+        func fantasyStarter(_ id: String, _ name: String, _ position: String, _ team: String, _ points: Double) -> FantasyPlayerWeek {
+            FantasyPlayerWeek(id: id, name: name, position: position, nflTeam: team, points: points)
+        }
+        let userStarters = [
+            fantasyStarter("u1", "Drake Maye", "QB", "NE", 21.14),
+            fantasyStarter("u2", "James Cook", "RB", "BUF", 13.80),
+            fantasyStarter("u3", "Kyren Williams", "RB", "LAR", 14.00),
+            fantasyStarter("u4", "Amon-Ra St. Brown", "WR", "DET", 23.70),
+            fantasyStarter("u5", "Tee Higgins", "WR", "CIN", 7.40),
+            fantasyStarter("u6", "George Kittle", "TE", "SF", 2.20),
+            fantasyStarter("u7", "Kenneth Walker", "FLEX", "KC", 0.00),
+            fantasyStarter("u8", "Brandon Aubrey", "K", "DAL", 2.12),
+            fantasyStarter("u9", "Steelers", "DEF", "PIT", 20.00)
+        ]
+        let opponentStarters = [
+            fantasyStarter("o1", "Jalen Hurts", "QB", "PHI", 24.62),
+            fantasyStarter("o2", "Jonathan Taylor", "RB", "IND", 17.50),
+            fantasyStarter("o3", "Saquon Barkley", "RB", "PHI", 8.50),
+            fantasyStarter("o4", "Justin Jefferson", "WR", "MIN", 18.20),
+            fantasyStarter("o5", "Trey McBride", "TE", "ARI", 12.36),
+            fantasyStarter("o6", "Ravens", "DEF", "BAL", 16.00)
+        ]
+        let leagueMatchups = [
+            FantasyLeagueMatchup(
+                id: "matchup:4",
+                matchupID: 4,
+                participants: [
+                    FantasyMatchupParticipant(rosterID: 3, points: 104.36, starters: userStarters),
+                    FantasyMatchupParticipant(rosterID: 8, points: 97.18, starters: opponentStarters)
+                ]
+            ),
+            FantasyLeagueMatchup(id: "matchup:1", matchupID: 1, participants: [
+                FantasyMatchupParticipant(rosterID: 1, points: 121.44, starters: []),
+                FantasyMatchupParticipant(rosterID: 2, points: 118.02, starters: [])
+            ]),
+            FantasyLeagueMatchup(id: "matchup:2", matchupID: 2, participants: [
+                FantasyMatchupParticipant(rosterID: 4, points: 88.70, starters: []),
+                FantasyMatchupParticipant(rosterID: 5, points: 109.16, starters: [])
+            ]),
+            FantasyLeagueMatchup(id: "matchup:3", matchupID: 3, participants: [
+                FantasyMatchupParticipant(rosterID: 6, points: 76.88, starters: []),
+                FantasyMatchupParticipant(rosterID: 7, points: 80.42, starters: [])
+            ]),
+            FantasyLeagueMatchup(id: "matchup:5", matchupID: 5, participants: [
+                FantasyMatchupParticipant(rosterID: 9, points: 132.10, starters: []),
+                FantasyMatchupParticipant(rosterID: 10, points: 125.94, starters: [])
+            ])
+        ]
         fantasyMatchup = FantasyMatchupSnapshot(
             leagueID: fantasyLeagueID,
             week: 1,
@@ -1381,10 +1471,13 @@ final class AppModel: ObservableObject {
             opponentRosterID: 8,
             userPoints: 104.36,
             opponentPoints: 97.18,
-            fetchedAt: now
+            fetchedAt: now,
+            userStarters: userStarters,
+            opponentStarters: opponentStarters,
+            leagueMatchups: leagueMatchups
         )
         fantasyState = .loaded
-        selectedCategoryID = "football"
+        selectedCategoryID = "nfl"
         destination = .sports
         screen = .catalog
     }
@@ -1476,13 +1569,18 @@ final class AppModel: ObservableObject {
         categories.first(where: { $0.id == categoryID })?.items.first(where: { $0.id == itemID })
     }
 
+    private func sportsMediaItem(categoryID: String, itemID: String) -> MediaItem? {
+        consolidatedSportsItems.first(where: { $0.categoryID == categoryID && $0.id == itemID })
+            ?? mediaItem(categoryID: categoryID, itemID: itemID, in: categories)
+            ?? mediaItem(categoryID: categoryID, itemID: itemID, in: playbackCategories)
+    }
+
     private func isQuickSwitchTargetAvailable(_ target: PlaybackTarget) -> Bool {
         switch target.source {
         case .liveChannel(let channelID):
             return liveChannels.contains(where: { $0.id == channelID })
         case .sports(let categoryID, let itemID):
-            guard let item = mediaItem(categoryID: categoryID, itemID: itemID, in: categories)
-                ?? mediaItem(categoryID: categoryID, itemID: itemID, in: playbackCategories) else {
+            guard let item = sportsMediaItem(categoryID: categoryID, itemID: itemID) else {
                 return false
             }
             return item.sportsPhase(at: Date()) == .live && item.sportsPlaybackAvailable(at: Date())
@@ -1580,7 +1678,7 @@ final class AppModel: ObservableObject {
         liveChannels = []
         availableLiveChannels = []
         isVeryLocalOnly = false
-        selectedCategoryID = "football"
+        selectedCategoryID = "nfl"
         destination = .home
         liveSearchQuery = ""
         selectedChannelGenre = nil
@@ -1623,6 +1721,14 @@ final class AppModel: ObservableObject {
 
     func pausePlayback() {
         playbackSession?.player.pause()
+    }
+
+    var shouldSuppressBrowseBackCommand: Bool {
+        playbackSession != nil || Date() < browseBackSuppressionDeadline
+    }
+
+    func beginPlaybackBackDismissal() {
+        browseBackSuppressionDeadline = Date().addingTimeInterval(0.75)
     }
 
     func dismissPlayback() {

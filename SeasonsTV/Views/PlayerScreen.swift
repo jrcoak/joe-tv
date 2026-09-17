@@ -6,6 +6,19 @@ private enum PlayerChromeLayer: Equatable {
     case hidden
     case controls
     case quickSwitch
+    case fantasyDrawer
+}
+
+private enum FantasyDrawerTab: String, CaseIterable, Hashable {
+    case matchup = "Matchup"
+    case league = "League"
+
+    var symbol: String {
+        switch self {
+        case .matchup: return "person.2.fill"
+        case .league: return "list.number"
+        }
+    }
 }
 
 private final class PlayerChromeModel: ObservableObject {
@@ -40,6 +53,8 @@ private struct PlayerSessionView: View {
         case playPause
         case favorite
         case guide
+        case captions
+        case fantasyScorebug
         case quickSwitchTrigger
         case quickSwitch(String)
     }
@@ -59,6 +74,8 @@ private struct PlayerSessionView: View {
     @State private var channelSurfMessageTask: Task<Void, Never>?
     @State private var pageCommandPosition = 0
     @State private var verticalInputLockedUntil = Date.distantPast
+    @State private var captionsPresented = false
+    @State private var playbackDismissScheduled = false
 
     private var quickSwitchEntries: [QuickSwitchRailEntry] { model.quickSwitchEntries }
     private var currentGuideProgram: EPGProgram? {
@@ -70,6 +87,9 @@ private struct PlayerSessionView: View {
         return model.nextGuideProgram(for: target)
     }
     private var remoteControlHint: String {
+        if model.playbackPresentation == .fantasyZone {
+            return "Matchup · Details   Down · Quick Switch   Hold Select · Last Stream"
+        }
         if session.isLivePlayback, model.lastPlaybackTarget != nil {
             return "Down · Quick Switch   Hold Select · Last Stream"
         }
@@ -83,8 +103,22 @@ private struct PlayerSessionView: View {
             Color.black.ignoresSafeArea()
             playbackSurface
 
+            if model.playbackPresentation == .fantasyZone,
+               session.isReady,
+               session.playbackError == nil {
+                if chrome.layer == .fantasyDrawer {
+                    FantasyPlaybackDrawer {
+                        closeFantasyDrawer()
+                    }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                } else if chrome.layer != .controls {
+                    fantasyScorebug
+                }
+            }
+
             if session.playbackError == nil,
                session.isReady,
+               chrome.layer != .fantasyDrawer,
                passiveChromeVisible || chrome.layer != .hidden {
                 playerChrome
                     .transition(.opacity)
@@ -147,6 +181,7 @@ private struct PlayerSessionView: View {
         .onChange(of: session.id) { _, _ in
             session.player.play()
             isPaused = false
+            captionsPresented = false
             passiveChromeVisible = true
             scheduleChromeHide(after: chrome.layer == .hidden ? 4 : 10)
         }
@@ -167,7 +202,7 @@ private struct PlayerSessionView: View {
                 showQuickSwitch()
                 return
             }
-            if target == .playPause || target == .favorite || target == .guide {
+            if target == .playPause || target == .favorite || target == .guide || target == .captions {
                 lastControlFocus = target
                 if case .quickSwitch = previous {
                     showControls(restoring: true)
@@ -193,8 +228,47 @@ private struct PlayerSessionView: View {
                   !identifiers.contains(focusedID) else { return }
             focusFirstQuickSwitchEntry()
         }
+        .onChange(of: captionsPresented) { _, isPresented in
+            if isPresented {
+                chrome.hideTask?.cancel()
+            } else if chrome.layer != .hidden {
+                scheduleChromeHide(after: 10)
+            }
+        }
+        .confirmationDialog(
+            "Subtitles & Captions",
+            isPresented: $captionsPresented,
+            titleVisibility: .visible
+        ) {
+            if session.subtitleOptions.isEmpty {
+                Button("No captions available") {}
+                    .disabled(true)
+            } else {
+                Button(session.selectedSubtitleOptionID == nil ? "Off  ✓" : "Off") {
+                    session.selectSubtitle(nil)
+                }
+                ForEach(session.subtitleOptions) { option in
+                    Button(session.selectedSubtitleOptionID == option.id ? "\(option.title)  ✓" : option.title) {
+                        session.selectSubtitle(option.id)
+                    }
+                }
+            }
+        } message: {
+            Text("Choose a caption track for this stream.")
+        }
         .onExitCommand(perform: handlePlayerBack)
         .onPlayPauseCommand(perform: togglePlayback)
+        .task(id: session.id) {
+            guard model.playbackPresentation == .fantasyZone else { return }
+            while !Task.isCancelled {
+                await model.refreshFantasyZone()
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+            }
+        }
         .pageCommand(value: $pageCommandPosition, in: -10_000...10_000, step: 1)
         .onChange(of: pageCommandPosition) { previous, current in
             guard previous != current else { return }
@@ -227,46 +301,75 @@ private struct PlayerSessionView: View {
 
     @ViewBuilder
     private var playbackSurface: some View {
-        if model.playbackPresentation == .fantasyZone {
-            HStack(spacing: 0) {
-                FantasyPlaybackRail()
-                    .frame(width: 340)
-                PlayerSurface(player: session.player)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        PlayerSurface(player: session.player)
             .ignoresSafeArea()
-        } else {
-            PlayerSurface(player: session.player)
-                .ignoresSafeArea()
+    }
+
+    @ViewBuilder
+    private var fantasyScorebug: some View {
+        VStack {
+            HStack {
+                Spacer()
+                FantasyScorebugContent()
+            }
+            Spacer()
         }
+        .padding(.top, 42)
+        .padding(.horizontal, 56)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: chrome.layer)
     }
 
     private var playerChrome: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                HStack(spacing: 10) {
-                    if session.isLivePlayback {
-                        Circle()
-                            .fill(SeasonTheme.liveSignal)
-                            .frame(width: 8, height: 8)
+            if model.playbackPresentation == .fantasyZone,
+               chrome.layer == .controls {
+                HStack {
+                    Spacer()
+                    Button(action: showFantasyDrawer) {
+                        FantasyScorebugContent()
                     }
-                    Text(session.isLivePlayback ? "LIVE" : "PLAYBACK")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .tracking(1.2)
-                    Text(session.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
+                    .buttonStyle(FantasyScorebugButtonStyle())
+                    .focused($focusedTarget, equals: .fantasyScorebug)
+                    .onKeyPress(.downArrow) {
+                        focusedTarget = lastControlFocus
+                        return .handled
+                    }
+                    .onMoveCommand { direction in
+                        guard direction == .down else { return }
+                        focusedTarget = lastControlFocus
+                    }
+                    .accessibilityLabel("Open fantasy matchup")
+                    .accessibilityHint("Shows your matchup, lineups, and league scores")
                 }
-                .foregroundStyle(SeasonTheme.paper)
-                .padding(.horizontal, 18)
-                .frame(height: 48)
-                .background(Color.black.opacity(0.74))
-                .overlay { RoundedRectangle(cornerRadius: 7).stroke(SeasonTheme.keyline) }
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .padding(.horizontal, 56)
+                .padding(.top, 42)
+                .focusSection()
+            } else if model.playbackPresentation != .fantasyZone {
+                HStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        if session.isLivePlayback {
+                            Circle()
+                                .fill(SeasonTheme.liveSignal)
+                                .frame(width: 8, height: 8)
+                        }
+                        Text(session.isLivePlayback ? "LIVE" : "PLAYBACK")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                        Text(session.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(SeasonTheme.paper)
+                    .padding(.horizontal, 18)
+                    .frame(height: 48)
+                    .background(Color.black.opacity(0.74))
+                    .overlay { RoundedRectangle(cornerRadius: 7).stroke(SeasonTheme.keyline) }
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .padding(.horizontal, 56)
+                .padding(.top, 42)
             }
-            .padding(.horizontal, 56)
-            .padding(.top, 42)
 
             Spacer()
 
@@ -283,7 +386,7 @@ private struct PlayerSessionView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.leading, model.playbackPresentation == .fantasyZone ? 374 : 64)
+            .padding(.leading, 64)
             .padding(.trailing, 64)
             .padding(.top, 70)
             .padding(.bottom, 44)
@@ -365,6 +468,7 @@ private struct PlayerSessionView: View {
                 .buttonStyle(PlayerControlButtonStyle())
                 .focused($focusedTarget, equals: .playPause)
                 .onExitCommand(perform: handleBack)
+                .onKeyPress(.upArrow) { handleControlUp() }
                 .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
                 .onKeyPress(.escape, phases: .down) { _ in
                     handleBack()
@@ -388,6 +492,7 @@ private struct PlayerSessionView: View {
                     .buttonStyle(PlayerControlButtonStyle())
                     .focused($focusedTarget, equals: .favorite)
                     .onExitCommand(perform: handleBack)
+                    .onKeyPress(.upArrow) { handleControlUp() }
                     .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
                     .onKeyPress(.escape, phases: .down) { _ in
                         handleBack()
@@ -398,13 +503,15 @@ private struct PlayerSessionView: View {
                 }
 
                 Button {
-                    model.destination = model.playbackPresentation == .fantasyZone
-                        ? .sports
-                        : .liveTV
-                    model.dismissPlayback()
+                    if model.playbackPresentation == .fantasyZone {
+                        showFantasyDrawer()
+                    } else {
+                        model.destination = .liveTV
+                        model.dismissPlayback()
+                    }
                 } label: {
                     Label(
-                        model.playbackPresentation == .fantasyZone ? "Fantasy Zone" : "Guide",
+                        model.playbackPresentation == .fantasyZone ? "Matchup" : "Guide",
                         systemImage: model.playbackPresentation == .fantasyZone
                             ? "trophy.fill"
                             : "rectangle.grid.1x2"
@@ -413,6 +520,7 @@ private struct PlayerSessionView: View {
                 .buttonStyle(PlayerControlButtonStyle())
                 .focused($focusedTarget, equals: .guide)
                 .onExitCommand(perform: handleBack)
+                .onKeyPress(.upArrow) { handleControlUp() }
                 .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
                 .onKeyPress(.escape, phases: .down) { _ in
                     handleBack()
@@ -420,6 +528,31 @@ private struct PlayerSessionView: View {
                 }
                 .onMoveCommand(perform: handleControlMove)
                 .accessibilityIdentifier("player.control.guide")
+
+                if !session.subtitleOptions.isEmpty {
+                    Button {
+                        session.refreshSubtitleOptions()
+                        captionsPresented = true
+                    } label: {
+                        Label(
+                            session.selectedSubtitleTitle ?? "Captions",
+                            systemImage: "captions.bubble"
+                        )
+                    }
+                    .buttonStyle(PlayerControlButtonStyle())
+                    .focused($focusedTarget, equals: .captions)
+                    .onExitCommand(perform: handleBack)
+                    .onKeyPress(.upArrow) { handleControlUp() }
+                    .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
+                    .onKeyPress(.escape, phases: .down) { _ in
+                        handleBack()
+                        return .handled
+                    }
+                    .onMoveCommand(perform: handleControlMove)
+                    .accessibilityLabel("Subtitles and captions")
+                    .accessibilityValue(session.selectedSubtitleTitle ?? "Off")
+                    .accessibilityIdentifier("player.control.captions")
+                }
 
                 Spacer()
 
@@ -595,6 +728,8 @@ private struct PlayerSessionView: View {
             showQuickSwitch()
         case .quickSwitch:
             scheduleChromeHide(after: 10)
+        case .fantasyDrawer:
+            break
         }
         return .handled
     }
@@ -616,9 +751,49 @@ private struct PlayerSessionView: View {
     }
 
     private func handleControlMove(_ direction: MoveCommandDirection) {
-        guard direction == .down,
-              Date() >= verticalInputLockedUntil else { return }
-        showQuickSwitch()
+        guard Date() >= verticalInputLockedUntil else { return }
+        switch direction {
+        case .up where model.playbackPresentation == .fantasyZone:
+            focusedTarget = .fantasyScorebug
+            scheduleChromeHide(after: 10)
+        case .down:
+            showQuickSwitch()
+        case .left, .right:
+            let targets = controlFocusTargets
+            guard !targets.isEmpty else { return }
+
+            let currentIndex = focusedTarget.flatMap { targets.firstIndex(of: $0) }
+                ?? targets.firstIndex(of: lastControlFocus)
+                ?? 0
+            let offset = direction == .left ? -1 : 1
+            let nextIndex = min(max(currentIndex + offset, 0), targets.count - 1)
+            let nextTarget = targets[nextIndex]
+            focusedTarget = nextTarget
+            lastControlFocus = nextTarget
+            scheduleChromeHide(after: 10)
+        default:
+            break
+        }
+    }
+
+    private var controlFocusTargets: [FocusTarget] {
+        var targets: [FocusTarget] = [.playPause]
+        if model.activeLiveChannelID != nil {
+            targets.append(.favorite)
+        }
+        targets.append(.guide)
+        if !session.subtitleOptions.isEmpty {
+            targets.append(.captions)
+        }
+        return targets
+    }
+
+    private func handleControlUp() -> KeyPress.Result {
+        guard model.playbackPresentation == .fantasyZone else { return .ignored }
+        guard Date() >= verticalInputLockedUntil else { return .handled }
+        focusedTarget = .fantasyScorebug
+        scheduleChromeHide(after: 10)
+        return .handled
     }
 
     private func handleQuickSwitchMove(_ direction: MoveCommandDirection) {
@@ -638,10 +813,17 @@ private struct PlayerSessionView: View {
             showControls(restoring: false)
             return .handled
         case .controls:
+            if model.playbackPresentation == .fantasyZone {
+                focusedTarget = .fantasyScorebug
+                scheduleChromeHide(after: 10)
+                return .handled
+            }
             return .ignored
         case .quickSwitch:
             showControls(restoring: true)
             return .handled
+        case .fantasyDrawer:
+            return .ignored
         }
     }
 
@@ -719,7 +901,24 @@ private struct PlayerSessionView: View {
             showControls(restoring: true)
         case .controls:
             hideChrome()
+        case .fantasyDrawer:
+            closeFantasyDrawer()
         case .hidden:
+            dismissPlaybackAfterBackPress()
+        }
+    }
+
+    private func dismissPlaybackAfterBackPress() {
+        guard !playbackDismissScheduled else { return }
+        playbackDismissScheduled = true
+        model.beginPlaybackBackDismissal()
+        chrome.hideTask?.cancel()
+        playerFocused = false
+
+        // Keep this view in the hierarchy until tvOS finishes dispatching the
+        // current Menu/Back event. Removing it synchronously lets that same
+        // event fall through to the browse screen (and, on device, the system).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             model.dismissPlayback()
         }
     }
@@ -754,6 +953,25 @@ private struct PlayerSessionView: View {
         chrome.layer = .quickSwitch
         playerFocused = false
         focusFirstQuickSwitchEntry()
+        scheduleChromeHide(after: 10)
+    }
+
+    private func showFantasyDrawer() {
+        guard model.playbackPresentation == .fantasyZone else { return }
+        chrome.hideTask?.cancel()
+        passiveChromeVisible = true
+        chrome.layer = .fantasyDrawer
+        playerFocused = false
+        focusedTarget = nil
+    }
+
+    private func closeFantasyDrawer() {
+        passiveChromeVisible = true
+        chrome.layer = .controls
+        playerFocused = false
+        DispatchQueue.main.async {
+            focusedTarget = .fantasyScorebug
+        }
         scheduleChromeHide(after: 10)
     }
 
@@ -797,209 +1015,618 @@ private struct PlayerSessionView: View {
             try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled,
                   model.switchingPlaybackTargetID == nil,
-                  session.playbackError == nil else { return }
+                  session.playbackError == nil,
+                  chrome.layer != .fantasyDrawer else { return }
             hideChrome()
         }
     }
 }
 
-private struct FantasyPlaybackRail: View {
+private struct FantasyScorebugContent: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            let liveGames = model.fantasyNFLScoreItems.filter {
-                $0.sportsPhase(at: context.date) == .live
-            }
-
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "trophy.fill")
-                        Text("FANTASY ZONE")
-                    }
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .tracking(1.5)
-                    .foregroundStyle(SeasonTheme.liveSignal)
-
-                    Text(model.fantasyLeague?.name ?? "Your matchup")
-                        .font(.system(size: 22, weight: .regular, design: .serif))
-                        .foregroundStyle(SeasonTheme.paper)
-                        .lineLimit(2)
-
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 8) {
+                    Image(systemName: "trophy.fill")
+                    Text("FANTASY MATCHUP")
                     if let week = model.fantasyMatchup?.week {
-                        Text("WEEK \(week)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .tracking(1.1)
-                            .foregroundStyle(SeasonTheme.secondaryText)
+                        Text("· WEEK \(week)")
+                    }
+                    Spacer(minLength: 8)
+                    if FantasyPlaybackState.hasLiveStarter(
+                        matchup: model.fantasyMatchup,
+                        events: model.fantasyNFLScoreboard,
+                        at: context.date
+                    ) {
+                        Circle()
+                            .fill(SeasonTheme.liveSignal)
+                            .frame(width: 7, height: 7)
+                        Text("LIVE")
+                            .foregroundStyle(SeasonTheme.liveSignal)
                     }
                 }
-
-                fantasyMatchupCard
-
-                Rectangle()
-                    .fill(SeasonTheme.keyline)
-                    .frame(height: 1)
-
-                HStack {
-                    Text("NFL LIVE")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.2)
-                    Spacer()
-                    Text("\(liveGames.count)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.1)
                 .foregroundStyle(SeasonTheme.paper.opacity(0.72))
 
-                if liveGames.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Image(systemName: "football")
-                            .font(.system(size: 24))
-                        Text("Scores appear here when NFL games are live.")
-                            .font(.system(size: 13, weight: .medium))
+                if let matchup = model.fantasyMatchup {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        scorebugTeam(
+                            model.fantasyUserTeam?.name ?? "Your team",
+                            score: matchup.userPoints,
+                            alignment: .leading
+                        )
+                        Text("VS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(SeasonTheme.secondaryText)
+                        scorebugTeam(
+                            model.fantasyOpponentTeam?.name ?? "Opponent",
+                            score: matchup.opponentPoints,
+                            alignment: .trailing
+                        )
                     }
-                    .padding(.top, 8)
+
+                    Text(FantasyPlaybackState.summary(
+                        matchup: matchup,
+                        events: model.fantasyNFLScoreboard,
+                        at: context.date
+                    ))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(0.7)
+                    .foregroundStyle(SeasonTheme.secondaryText)
+                    .lineLimit(1)
                 } else {
-                    VStack(spacing: 8) {
-                        ForEach(Array(liveGames.prefix(5))) { item in
-                            FantasyPlaybackGameRow(item: item)
-                        }
+                    HStack(spacing: 10) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading your matchup…")
+                            .font(.system(size: 14, weight: .semibold))
                     }
+                    .frame(height: 50)
                 }
-
-                Spacer(minLength: 0)
-
-                Text("LIVE SCORES · REFRESHES EVERY 30 SEC")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .tracking(0.75)
-                    .foregroundStyle(SeasonTheme.secondaryText.opacity(0.8))
             }
-            .padding(.top, 52)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 28)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                LinearGradient(
-                    colors: [Color(red: 0.055, green: 0.06, blue: 0.07), Color.black],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(SeasonTheme.keyline).frame(width: 1)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var fantasyMatchupCard: some View {
-        if let matchup = model.fantasyMatchup {
-            VStack(spacing: 12) {
-                fantasyTeamRow(
-                    label: "YOU",
-                    name: model.fantasyUserTeam?.name ?? "Your team",
-                    score: matchup.userPoints
-                )
-                fantasyTeamRow(
-                    label: "OPP",
-                    name: model.fantasyOpponentTeam?.name ?? "Opponent",
-                    score: matchup.opponentPoints
-                )
-
-                Text(marginText(matchup))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(SeasonTheme.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(14)
-            .background(SeasonTheme.raisedSurface.opacity(0.92))
-            .overlay { RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline) }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        } else {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Loading your matchup…")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(SeasonTheme.secondaryText)
-            }
-            .padding(14)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(width: 430, alignment: .leading)
+            .frame(minHeight: 112, alignment: .leading)
+            .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 12))
+            .overlay { RoundedRectangle(cornerRadius: 12).stroke(SeasonTheme.keyline) }
+            .shadow(color: .black.opacity(0.34), radius: 22, y: 10)
         }
     }
 
-    private func fantasyTeamRow(label: String, name: String, score: Double?) -> some View {
-        HStack(spacing: 10) {
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .tracking(0.8)
-                .foregroundStyle(SeasonTheme.liveSignal)
-                .frame(width: 28, alignment: .leading)
+    private func scorebugTeam(
+        _ name: String,
+        score: Double?,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
             Text(name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(SeasonTheme.paper)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(SeasonTheme.paper.opacity(0.76))
                 .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(score.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? "—")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+            Text(FantasyPlaybackState.score(score))
+                .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(SeasonTheme.paper)
                 .monospacedDigit()
         }
-    }
-
-    private func marginText(_ matchup: FantasyMatchupSnapshot) -> String {
-        guard let opponent = matchup.opponentPoints else { return "Opponent score pending" }
-        let difference = matchup.userPoints - opponent
-        if abs(difference) < 0.005 { return "MATCHUP TIED" }
-        let points = abs(difference).formatted(.number.precision(.fractionLength(2)))
-        return difference > 0 ? "LEADING BY \(points)" : "TRAILING BY \(points)"
+        .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
     }
 }
 
-private struct FantasyPlaybackGameRow: View {
-    let item: MediaItem
+private struct FantasyScorebugButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        FantasyScorebugButtonBody(configuration: configuration)
+    }
+
+    private struct FantasyScorebugButtonBody: View {
+        let configuration: Configuration
+        @Environment(\.isFocused) private var isFocused
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isFocused ? SeasonTheme.focusVolt : .clear, lineWidth: SeasonTheme.focusLineWidth)
+                }
+                .scaleEffect(configuration.isPressed ? 0.98 : isFocused ? 1.025 : 1)
+                .shadow(color: isFocused ? SeasonTheme.focusVolt.opacity(0.18) : .clear, radius: 24)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isFocused)
+        }
+    }
+}
+
+private struct FantasyPlaybackDrawer: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var focusedID: String?
+    @State private var selectedTab: FantasyDrawerTab = .matchup
+    @State private var selectedMatchupID: String?
+    let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Circle()
-                    .fill(SeasonTheme.liveSignal)
-                    .frame(width: 5, height: 5)
-                Text(item.sportsEvent?.status?.uppercased() ?? "LIVE")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(SeasonTheme.liveSignal)
-                    .lineLimit(1)
-                Spacer()
+        HStack(spacing: 0) {
+            Spacer()
+            VStack(alignment: .leading, spacing: 20) {
+                drawerHeader
+                tabBar
+                Group {
+                    switch selectedTab {
+                    case .matchup:
+                        lineupView
+                    case .league:
+                        leagueView
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                Text("MENU · CLOSE")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.1)
+                    .foregroundStyle(SeasonTheme.secondaryText)
             }
-            if let event = item.sportsEvent {
-                scoreRow(event.awayTeam ?? "Away", score: event.awayScore)
-                scoreRow(event.homeTeam ?? "Home", score: event.homeScore)
-            } else {
-                Text(item.title)
-                    .font(.system(size: 12, weight: .semibold))
+            .padding(.horizontal, 34)
+            .padding(.top, 42)
+            .padding(.bottom, 28)
+            .frame(width: 720)
+            .background(.ultraThinMaterial)
+            .background(Color(red: 0.075, green: 0.083, blue: 0.095).opacity(0.93))
+            .overlay(alignment: .leading) {
+                Rectangle().fill(SeasonTheme.paper.opacity(0.18)).frame(width: 1)
+            }
+            .shadow(color: .black.opacity(0.55), radius: 38, x: -18)
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            selectedMatchupID = currentMatchup?.id
+            DispatchQueue.main.async { focusedID = "tab:\(selectedTab.rawValue)" }
+        }
+        .onExitCommand(perform: close)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: selectedTab)
+    }
+
+    private var drawerHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "trophy.fill")
+                    Text("FANTASY ZONE")
+                }
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(1.5)
+                .foregroundStyle(SeasonTheme.liveSignal)
+                Text(model.fantasyLeague?.name ?? "Your league")
+                    .font(.system(size: 29, weight: .regular, design: .serif))
                     .foregroundStyle(SeasonTheme.paper)
                     .lineLimit(1)
             }
+            Spacer()
+            if let week = model.fantasyMatchup?.week {
+                Text("WEEK \(week)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.045))
-        .overlay { RoundedRectangle(cornerRadius: 8).stroke(SeasonTheme.keyline) }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func scoreRow(_ name: String, score: Int?) -> some View {
-        HStack(spacing: 8) {
-            Text(name)
-                .font(.system(size: 12, weight: .semibold))
+    private var tabBar: some View {
+        HStack(spacing: 10) {
+            ForEach(FantasyDrawerTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    Label(tab.rawValue, systemImage: tab.symbol)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FantasyDrawerTabButtonStyle(isSelected: selectedTab == tab))
+                .focused($focusedID, equals: "tab:\(tab.rawValue)")
+                .onMoveCommand { direction in
+                    moveTabFocus(from: tab, direction: direction)
+                }
+            }
+        }
+    }
+
+    private func moveTabFocus(from tab: FantasyDrawerTab, direction: MoveCommandDirection) {
+        let tabs = FantasyDrawerTab.allCases
+        guard let index = tabs.firstIndex(of: tab) else { return }
+
+        switch direction {
+        case .left where index > tabs.startIndex:
+            focusedID = "tab:\(tabs[tabs.index(before: index)].rawValue)"
+        case .right where index < tabs.index(before: tabs.endIndex):
+            focusedID = "tab:\(tabs[tabs.index(after: index)].rawValue)"
+        default:
+            break
+        }
+    }
+
+    @ViewBuilder
+    private var lineupView: some View {
+        if let matchup = selectedMatchup {
+            let left = matchup.participants.first
+            let right = matchup.participants.dropFirst().first
+            let rowCount = max(left?.starters.count ?? 0, right?.starters.count ?? 0)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 16) {
+                    lineupTeamHeader(left, alignment: .leading)
+                    lineupTeamHeader(right, alignment: .trailing)
+                }
+                Rectangle().fill(SeasonTheme.keyline).frame(height: 1)
+                if rowCount == 0 {
+                    FantasyDrawerEmptyState(message: "Lineup details are loading…")
+                } else {
+                    ForEach(0..<rowCount, id: \.self) { index in
+                        HStack(spacing: 16) {
+                            FantasyLineupPlayerCell(player: player(at: index, in: left), alignment: .leading)
+                            FantasyLineupPlayerCell(player: player(at: index, in: right), alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        } else {
+            FantasyDrawerEmptyState(message: "Lineup details are loading…")
+        }
+    }
+
+    private var leagueView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("THIS WEEK")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(SeasonTheme.secondaryText)
+            ForEach(orderedLeagueMatchups) { matchup in
+                FantasyLeagueMatchupRow(
+                    matchup: matchup,
+                    league: model.fantasyLeague,
+                    currentRosterID: model.fantasyMatchup?.userRosterID
+                )
+                .background(
+                    Color.white.opacity(selectedMatchupID == matchup.id ? 0.065 : 0.035),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10).stroke(SeasonTheme.keyline)
+                }
+            }
+        }
+    }
+
+    private var currentMatchup: FantasyLeagueMatchup? {
+        guard let snapshot = model.fantasyMatchup else { return nil }
+        return snapshot.leagueMatchups.first {
+            $0.participants.contains(where: { $0.rosterID == snapshot.userRosterID })
+        }
+    }
+
+    private var selectedMatchup: FantasyLeagueMatchup? {
+        guard let snapshot = model.fantasyMatchup else { return nil }
+        if let selectedMatchupID,
+           let selected = snapshot.leagueMatchups.first(where: { $0.id == selectedMatchupID }) {
+            return selected
+        }
+        if let currentMatchup { return currentMatchup }
+        var participants = [
+            FantasyMatchupParticipant(
+                rosterID: snapshot.userRosterID,
+                points: snapshot.userPoints,
+                starters: snapshot.userStarters
+            )
+        ]
+        if let opponentRosterID = snapshot.opponentRosterID {
+            participants.append(
+                FantasyMatchupParticipant(
+                    rosterID: opponentRosterID,
+                    points: snapshot.opponentPoints ?? 0,
+                    starters: snapshot.opponentStarters
+                )
+            )
+        }
+        return FantasyLeagueMatchup(
+            id: "current",
+            matchupID: snapshot.matchupID,
+            participants: participants
+        )
+    }
+
+    private var orderedLeagueMatchups: [FantasyLeagueMatchup] {
+        guard let userRosterID = model.fantasyMatchup?.userRosterID else {
+            return model.fantasyMatchup?.leagueMatchups ?? []
+        }
+        return (model.fantasyMatchup?.leagueMatchups ?? []).sorted { left, right in
+            let leftIsUser = left.participants.contains { $0.rosterID == userRosterID }
+            let rightIsUser = right.participants.contains { $0.rosterID == userRosterID }
+            if leftIsUser != rightIsUser { return leftIsUser }
+            return left.id < right.id
+        }
+    }
+
+    private func lineupTeamHeader(
+        _ participant: FantasyMatchupParticipant?,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(model.fantasyLeague?.team(forRosterID: participant?.rosterID)?.name ?? "—")
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(SeasonTheme.paper)
                 .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(score.map(String.init) ?? "–")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+            Text(FantasyPlaybackState.score(participant?.points))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(SeasonTheme.paper)
                 .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+    }
+
+    private func player(
+        at index: Int,
+        in participant: FantasyMatchupParticipant?
+    ) -> FantasyPlayerWeek? {
+        guard let starters = participant?.starters, index < starters.count else { return nil }
+        return starters[index]
+    }
+}
+
+private struct FantasyDrawerTabButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        FantasyDrawerTabButtonBody(configuration: configuration, isSelected: isSelected)
+    }
+
+    private struct FantasyDrawerTabButtonBody: View {
+        let configuration: Configuration
+        let isSelected: Bool
+        @Environment(\.isFocused) private var isFocused
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(SeasonTheme.paper)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+                .background(
+                    isSelected ? SeasonTheme.paper.opacity(0.13) : SeasonTheme.surface,
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule().stroke(
+                        isFocused ? SeasonTheme.focusVolt : isSelected ? SeasonTheme.paper.opacity(0.72) : SeasonTheme.keyline,
+                        lineWidth: isFocused ? SeasonTheme.focusLineWidth : isSelected ? 2 : 1
+                    )
+                }
+                .scaleEffect(configuration.isPressed ? 0.97 : isFocused ? 1.025 : 1)
+                .shadow(color: isFocused ? SeasonTheme.focusVolt.opacity(0.16) : .clear, radius: 18)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isFocused)
+        }
+    }
+}
+
+private struct FantasyLineupPlayerCell: View {
+    let player: FantasyPlayerWeek?
+    let alignment: HorizontalAlignment
+
+    var body: some View {
+        HStack(spacing: 9) {
+            if alignment == .trailing { score }
+            VStack(alignment: alignment, spacing: 2) {
+                Text(player?.name ?? "—")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(SeasonTheme.paper)
+                    .lineLimit(1)
+                Text([player?.position, player?.nflTeam].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SeasonTheme.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+            if alignment == .leading { score }
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var score: some View {
+        Text(player.map { FantasyPlaybackState.score($0.points) } ?? "")
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .foregroundStyle(SeasonTheme.paper)
+            .monospacedDigit()
+            .frame(width: 58, alignment: alignment == .leading ? .trailing : .leading)
+    }
+}
+
+private struct FantasyLeagueMatchupRow: View {
+    let matchup: FantasyLeagueMatchup
+    let league: FantasyLeagueProfile?
+    let currentRosterID: Int?
+
+    var body: some View {
+        let left = matchup.participants.first
+        let right = matchup.participants.dropFirst().first
+        HStack(spacing: 12) {
+            leagueTeam(left, alignment: .leading)
+            Text("VS")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(SeasonTheme.secondaryText)
+            leagueTeam(right, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 72)
+    }
+
+    private func leagueTeam(
+        _ participant: FantasyMatchupParticipant?,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
+            HStack(spacing: 6) {
+                if alignment == .trailing { Spacer(minLength: 0) }
+                Text(league?.team(forRosterID: participant?.rosterID)?.name ?? "—")
+                    .lineLimit(1)
+                if participant?.rosterID == currentRosterID {
+                    Text("YOU")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SeasonTheme.liveSignal)
+                }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            Text(FantasyPlaybackState.score(participant?.points))
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(SeasonTheme.paper)
+        .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+    }
+}
+
+private struct FantasyDrawerEmptyState: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView().controlSize(.small)
+            Text(message)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(SeasonTheme.secondaryText)
+        }
+        .padding(.top, 18)
+    }
+}
+
+private enum FantasyPlayerGameState: Equatable {
+    case live
+    case upcoming
+    case final
+    case unknown
+}
+
+private enum FantasyPlaybackState {
+    static func score(_ value: Double?) -> String {
+        value?.formatted(.number.precision(.fractionLength(2))) ?? "—"
+    }
+
+    static func hasLiveStarter(
+        matchup: FantasyMatchupSnapshot?,
+        events: [SportsScheduleEvent],
+        at date: Date
+    ) -> Bool {
+        guard let matchup else { return false }
+        return (matchup.userStarters + matchup.opponentStarters).contains {
+            gameState(for: $0, events: events, at: date) == .live
+        }
+    }
+
+    static func summary(
+        matchup: FantasyMatchupSnapshot,
+        events: [SportsScheduleEvent],
+        at date: Date
+    ) -> String {
+        let participants = [
+            FantasyMatchupParticipant(
+                rosterID: matchup.userRosterID,
+                points: matchup.userPoints,
+                starters: matchup.userStarters
+            ),
+            matchup.opponentRosterID.map {
+                FantasyMatchupParticipant(
+                    rosterID: $0,
+                    points: matchup.opponentPoints ?? 0,
+                    starters: matchup.opponentStarters
+                )
+            }
+        ].compactMap { $0 }
+        return summary(
+            participants: participants,
+            currentRosterID: matchup.userRosterID,
+            events: events,
+            at: date
+        )
+    }
+
+    static func summary(
+        participants: [FantasyMatchupParticipant],
+        currentRosterID: Int?,
+        events: [SportsScheduleEvent],
+        at date: Date
+    ) -> String {
+        guard !participants.isEmpty else { return "MATCHUP UPDATING" }
+        let ordered = participants.sorted { left, _ in left.rosterID == currentRosterID }
+        let you = ordered.first(where: { $0.rosterID == currentRosterID }) ?? ordered[0]
+        let opponent = ordered.first(where: { $0.rosterID != you.rosterID })
+        let yourLeft = unfinishedCount(you.starters, events: events, at: date)
+        let opponentLeft = unfinishedCount(opponent?.starters ?? [], events: events, at: date)
+        let resolvedCount = (you.starters + (opponent?.starters ?? [])).filter {
+            gameState(for: $0, events: events, at: date) != .unknown
+        }.count
+
+        if resolvedCount == 0 {
+            guard let opponent else { return "OPPONENT PENDING" }
+            let difference = you.points - opponent.points
+            if abs(difference) < 0.005 { return "MATCHUP TIED" }
+            return difference > 0
+                ? "LEADING BY \(score(abs(difference)))"
+                : "TRAILING BY \(score(abs(difference)))"
+        }
+        if yourLeft == 0, opponentLeft == 0 { return "MATCHUP FINAL" }
+        if opponentLeft == 0 { return "\(yourLeft) LEFT · OPP FINAL" }
+        if yourLeft == 0 { return "YOU FINAL · OPP \(opponentLeft) LEFT" }
+        return "\(yourLeft) LEFT · OPP \(opponentLeft) LEFT"
+    }
+
+    static func gameState(
+        for player: FantasyPlayerWeek,
+        events: [SportsScheduleEvent],
+        at date: Date
+    ) -> FantasyPlayerGameState {
+        guard let code = normalizedTeamCode(player.nflTeam),
+              let event = events.first(where: { eventContainsTeam($0, code: code) }) else {
+            return .unknown
+        }
+        let status = event.status?.lowercased() ?? ""
+        if ["final", "postponed", "canceled", "cancelled"].contains(where: status.contains) {
+            return .final
+        }
+        if ["live", "halftime", "quarter", "overtime", "end of"].contains(where: status.contains) {
+            return .live
+        }
+        if event.startsAt > date { return .upcoming }
+        if event.homeScore != nil || event.awayScore != nil { return .live }
+        return .upcoming
+    }
+
+    private static func unfinishedCount(
+        _ players: [FantasyPlayerWeek],
+        events: [SportsScheduleEvent],
+        at date: Date
+    ) -> Int {
+        players.filter {
+            let state = gameState(for: $0, events: events, at: date)
+            return state == .live || state == .upcoming
+        }.count
+    }
+
+    private static func eventContainsTeam(_ event: SportsScheduleEvent, code: String) -> Bool {
+        let home = normalizedTeamCode(teamCode(from: event.homeTeamLogoURL))
+        let away = normalizedTeamCode(teamCode(from: event.awayTeamLogoURL))
+        return home == code || away == code
+    }
+
+    private static func teamCode(from url: URL?) -> String? {
+        url?.deletingPathExtension().lastPathComponent
+    }
+
+    private static func normalizedTeamCode(_ value: String?) -> String? {
+        guard let value else { return nil }
+        switch value.uppercased() {
+        case "WAS": return "WSH"
+        case "JAC": return "JAX"
+        default: return value.uppercased()
         }
     }
 }

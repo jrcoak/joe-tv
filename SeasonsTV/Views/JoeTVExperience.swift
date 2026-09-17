@@ -51,7 +51,10 @@ struct JoeTVHomeView: View {
             guard let identifier, identifier.hasPrefix("channel:") else { return }
             lastFocusedFavoriteID = String(identifier.dropFirst("channel:".count))
         }
-        .onExitCommand { onFocusNavigation() }
+        .onExitCommand {
+            guard !model.shouldSuppressBrowseBackCommand else { return }
+            onFocusNavigation()
+        }
     }
 
     @ViewBuilder
@@ -397,7 +400,10 @@ struct JoeTVGuideView: View {
             }
         }
         .onDisappear { stopPreview() }
-        .onExitCommand { handleExit() }
+        .onExitCommand {
+            guard !model.shouldSuppressBrowseBackCommand else { return }
+            handleExit()
+        }
     }
 
     private func selectionHeader(at date: Date) -> some View {
@@ -935,7 +941,10 @@ struct JoeTVSportsView: View {
             if !enabled { showsFantasyZone = false }
         }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
-        .onExitCommand { onFocusNavigation() }
+        .onExitCommand {
+            guard !model.shouldSuppressBrowseBackCommand else { return }
+            onFocusNavigation()
+        }
         .task(id: showsFantasyZone) {
             guard showsFantasyZone else { return }
             while !Task.isCancelled {
@@ -1495,7 +1504,7 @@ struct JoeTVSportsView: View {
 
     private func fantasyNFLItems(at date: Date) -> [MediaItem] {
         model.fantasyNFLScoreItems.filter { item in
-            guard item.categoryID == "football", item.sportsPhase(at: date) == .live else {
+            guard item.categoryID == "nfl", item.sportsPhase(at: date) == .live else {
                 return false
             }
             return isNFL(item)
@@ -1514,7 +1523,7 @@ struct JoeTVSportsView: View {
         let cutoff = calendar.date(byAdding: .day, value: 1, to: tuesday) ?? .distantFuture
 
         return model.fantasyNFLScoreItems.filter { item in
-            guard item.categoryID == "football",
+            guard item.categoryID == "nfl",
                   item.sportsPhase(at: date) == .upcoming,
                   let startsAt = item.sportsEvent?.startsAt,
                   startsAt < cutoff else { return false }
@@ -1561,7 +1570,8 @@ struct JoeTVSportsView: View {
         guard ProcessInfo.processInfo.environment["JOE_TV_DEBUG_OPEN_BASEBALL_SELECTOR"] == "1",
               broadcastItem == nil else { return }
         let liveBaseball = items.filter {
-            $0.categoryID == "baseball" && $0.sportsPhase(at: Date()) == .live
+            SportsCategoryOption.baseballCategoryIDs.contains($0.categoryID) &&
+                $0.sportsPhase(at: Date()) == .live
         }
         let baseball = liveBaseball.first(where: {
             let groupIDs = Set($0.sportsBroadcastGroups.map(\.id))
@@ -1727,7 +1737,10 @@ struct JoeTVESPNPlusView: View {
             }
         }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
-        .onExitCommand { onFocusNavigation() }
+        .onExitCommand {
+            guard !model.shouldSuppressBrowseBackCommand else { return }
+            onFocusNavigation()
+        }
     }
 
     private var header: some View {
@@ -2816,12 +2829,16 @@ private struct JoeTVSportsGuideCard: View {
 
     private var atmosphere: Color {
         switch item.categoryID {
-        case "football": return Color(red: 0.45, green: 0.25, blue: 0.09)
-        case "baseball": return Color(red: 0.33, green: 0.12, blue: 0.12)
-        case "hockey": return Color(red: 0.11, green: 0.24, blue: 0.38)
-        case "basketball": return Color(red: 0.40, green: 0.19, blue: 0.07)
+        case let id where SportsCategoryOption.footballCategoryIDs.contains(id):
+            return Color(red: 0.45, green: 0.25, blue: 0.09)
+        case let id where SportsCategoryOption.baseballCategoryIDs.contains(id):
+            return Color(red: 0.33, green: 0.12, blue: 0.12)
+        case let id where SportsCategoryOption.hockeyCategoryIDs.contains(id):
+            return Color(red: 0.11, green: 0.24, blue: 0.38)
+        case let id where SportsCategoryOption.basketballCategoryIDs.contains(id):
+            return Color(red: 0.40, green: 0.19, blue: 0.07)
         case "soccer": return Color(red: 0.08, green: 0.30, blue: 0.18)
-        case "tennis": return Color(red: 0.28, green: 0.34, blue: 0.08)
+        case "tennis", "pickleball": return Color(red: 0.28, green: 0.34, blue: 0.08)
         default: return Color(red: 0.19, green: 0.22, blue: 0.29)
         }
     }
@@ -3160,7 +3177,7 @@ private extension MediaItem {
     }
 
     var shouldPresentSportsPlaybackSelector: Bool {
-        (categoryID == "baseball" && isPlayable) || playableOptions.count > 1
+        (SportsCategoryOption.baseballCategoryIDs.contains(categoryID) && isPlayable) || playableOptions.count > 1
     }
 
     var sportsBroadcastGroups: [JoeTVBroadcastGroup] {

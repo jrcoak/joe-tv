@@ -32,8 +32,22 @@ enum ParserSmoke {
             fatalError("EPG timeline clipping or absolute-time geometry is incorrect")
         }
 
-        guard SportsCategoryOption.all.prefix(4).map(\.id) == ["football", "baseball", "hockey", "basketball"] else {
+        let expectedSportsCategoryIDs = [
+            "nfl", "college-football", "cfl", "xfl",
+            "mlb", "college-baseball", "softball", "little-league", "banana-ball",
+            "nhl", "college-hockey", "womens-college-hockey", "field-hockey",
+            "nba", "wnba", "mens-college-basketball", "womens-college-basketball",
+            "soccer", "tennis", "pickleball", "golf", "combat", "wrestling", "racing",
+            "lacrosse", "other"
+        ]
+        guard SportsCategoryOption.all.map(\.id) == expectedSportsCategoryIDs else {
             fatalError("Default Sports category order changed")
+        }
+        let migratedLegacySportsSelection = SportsCategoryOption.migratingLegacySelection([
+            "football", "baseball", "hockey", "basketball", "tennis", "combat", "volleyball"
+        ])
+        guard migratedLegacySportsSelection == Set(expectedSportsCategoryIDs).subtracting(["soccer", "golf", "racing", "lacrosse"]) else {
+            fatalError("Legacy Sports filters were not expanded into the granular taxonomy")
         }
 
         func playbackTarget(_ id: String, option: String? = nil) -> PlaybackTarget {
@@ -366,17 +380,35 @@ enum ParserSmoke {
             fatalError("Sleeper current NFL scoring week was not decoded")
         }
 
-        let sleeperMatchupsJSON = Data(#"[{"roster_id":3,"matchup_id":4,"points":101.25,"custom_points":104.36},{"roster_id":8,"matchup_id":4,"points":97.18,"custom_points":null}]"#.utf8)
+        let sleeperPlayersJSON = Data(#"{"4046":{"full_name":"Josh Allen","position":"QB","team":"BUF"},"PIT":{"full_name":"Pittsburgh Steelers","position":"DEF","team":"PIT"},"6904":{"first_name":"Jalen","last_name":"Hurts","position":"QB","team":"PHI"},"unused":{"full_name":"Bench Player","position":"WR","team":"NE"}}"#.utf8)
+        let sleeperMatchupsJSON = Data(#"[{"roster_id":3,"matchup_id":4,"points":101.25,"custom_points":104.36,"starters":["4046","PIT"],"starters_points":[24.12,8.0],"players_points":{"4046":24.12,"PIT":8.0}},{"roster_id":8,"matchup_id":4,"points":97.18,"custom_points":null,"starters":["6904"],"starters_points":[30.72],"players_points":{"6904":30.72}},{"roster_id":1,"matchup_id":2,"points":88.4,"custom_points":null,"starters":[],"starters_points":[],"players_points":{}}]"#.utf8)
+        guard let sleeperStarterIDs = try? SleeperAPIParser.starterIDs(data: sleeperMatchupsJSON),
+              sleeperStarterIDs == Set(["4046", "PIT", "6904"]),
+              let sleeperPlayers = try? SleeperAPIParser.playerDirectory(
+                  data: sleeperPlayersJSON,
+                  including: sleeperStarterIDs
+              ),
+              sleeperPlayers.count == 3 else {
+            fatalError("Sleeper player directory was not decoded")
+        }
         guard let sleeperMatchup = try? SleeperAPIParser.matchup(
             leagueID: sleeperLeague.id,
             rosterID: 3,
             week: 3,
-            data: sleeperMatchupsJSON
+            data: sleeperMatchupsJSON,
+            players: sleeperPlayers
         ),
               sleeperMatchup.opponentRosterID == 8,
               sleeperMatchup.userPoints == 104.36,
-              sleeperMatchup.opponentPoints == 97.18 else {
-            fatalError("Sleeper matchup pairing or custom scoring was not decoded")
+              sleeperMatchup.opponentPoints == 97.18,
+              sleeperMatchup.userStarters.first?.name == "Josh Allen",
+              sleeperMatchup.userStarters.first?.position == "QB",
+              sleeperMatchup.userStarters.first?.nflTeam == "BUF",
+              sleeperMatchup.userStarters.first?.points == 24.12,
+              sleeperMatchup.opponentStarters.first?.name == "Jalen Hurts",
+              sleeperMatchup.leagueMatchups.count == 2,
+              sleeperMatchup.leagueMatchups.first(where: { $0.matchupID == 4 })?.participants.count == 2 else {
+            fatalError("Sleeper matchup pairing, starter details, or league scores were not decoded")
         }
 
         let seriesReference = ISO8601DateFormatter().date(from: "2026-08-31T12:00:00Z")!
@@ -436,6 +468,7 @@ enum ParserSmoke {
         )
         let repeatedSeriesItems = repeatedSeriesMerge.first?.items ?? []
         guard repeatedSeriesItems.count == 3,
+              repeatedSeriesItems.allSatisfy({ $0.categoryID == "mlb" }),
               Set(repeatedSeriesItems.compactMap { $0.sportsEvent?.eventID }) == Set(["past", "today", "tomorrow"]),
               repeatedSeriesItems.first(where: { $0.id == seriesPlayback.id })?.sportsEvent?.eventID == "past",
               repeatedSeriesItems.first(where: { $0.sportsEvent?.eventID == "today" })?.isPlayable == false else {
@@ -444,13 +477,13 @@ enum ParserSmoke {
         let upcomingBaseball = SportsEventGuidePolicy.filteredItems(
             repeatedSeriesItems,
             scope: .upcoming,
-            selectedCategoryIDs: ["baseball"],
+            selectedCategoryIDs: ["mlb"],
             at: seriesReference
         )
         let liveBaseballAtReference = SportsEventGuidePolicy.filteredItems(
             repeatedSeriesItems,
             scope: .live,
-            selectedCategoryIDs: ["baseball"],
+            selectedCategoryIDs: ["mlb"],
             at: seriesReference
         )
         guard upcomingBaseball.compactMap({ $0.sportsEvent?.eventID }) == ["today", "tomorrow"],
@@ -544,6 +577,7 @@ enum ParserSmoke {
         )
         guard let enrichedFootball = enrichedSports.first?.items.first,
               enrichedFootball.id == footballPlaybackItem.id,
+              enrichedFootball.categoryID == "nfl",
               enrichedFootball.isPlayable,
               enrichedFootball.imageURL?.path.hasSuffix("matchup.jpg") == true,
               enrichedFootball.sportsEvent?.league == "NFL" else {
@@ -617,7 +651,7 @@ enum ParserSmoke {
             playback: .hls(URL(string: "https://media.example/studio/master.m3u8")!)
         )
         guard SportsCategoryClassifier.categoryID(for: espnStudioShow) == nil,
-              SportsCategoryClassifier.categoryID(for: footballPlaybackItem) == "football" else {
+              SportsCategoryClassifier.categoryID(for: footballPlaybackItem) == "nfl" else {
             fatalError("ESPN studio shows must be excluded without hiding actual games")
         }
 
@@ -672,18 +706,44 @@ enum ParserSmoke {
                 .queryItems?.first(where: { $0.name == "id" })?.value == espnPlusLivePlaybackID else {
             fatalError("ESPN+ live/replay metadata or FairPlay page identity was not parsed")
         }
-        guard SportsCategoryClassifier.categoryID(
-            title: "NCAA Women's Volleyball",
-            upstreamCategory: "NCAA Women's Volleyball"
-        ) == "volleyball",
-              SportsCategoryClassifier.categoryID(
-                title: "Spanish LALIGA",
-                upstreamCategory: "Spanish LALIGA"
-              ) == "soccer",
-              SportsCategoryClassifier.categoryID(
-                title: "NASCAR O'Reilly Auto Parts Series",
-                upstreamCategory: "NASCAR"
-              ) == "racing",
+        let taxonomySamples: [(String, String, String)] = [
+            ("New England Patriots at Buffalo Bills", "NFL", "nfl"),
+            ("Boston College at Syracuse", "NCAAF", "college-football"),
+            ("Toronto Argonauts at Hamilton Tiger-Cats", "CFL", "cfl"),
+            ("DC Defenders at St. Louis Battlehawks", "XFL", "xfl"),
+            ("Yankees at Red Sox", "MLB", "mlb"),
+            ("LSU at Texas", "NCAA Baseball", "college-baseball"),
+            ("Oklahoma at Florida", "NCAA Softball", "softball"),
+            ("Japan at Mexico", "Little League World Series", "little-league"),
+            ("Savannah Bananas World Tour", "Banana Ball", "banana-ball"),
+            ("Bruins at Canadiens", "NHL", "nhl"),
+            ("Boston College at Maine", "NCAA Ice Hockey", "college-hockey"),
+            ("Wisconsin at Minnesota", "NCAA Women's Ice Hockey", "womens-college-hockey"),
+            ("Northwestern at Iowa", "NCAA Field Hockey", "field-hockey"),
+            ("Celtics at Knicks", "NBA", "nba"),
+            ("Sun at Liberty", "WNBA", "wnba"),
+            ("Duke at North Carolina", "Men's College Basketball", "mens-college-basketball"),
+            ("UConn at South Carolina", "NCAA Women's Basketball", "womens-college-basketball"),
+            ("Revolution at NYCFC", "MLS Soccer", "soccer"),
+            ("US Open Court 7", "ATP Tennis", "tennis"),
+            ("PPA Tour Championship", "Pickleball", "pickleball"),
+            ("US Open Final Round", "PGA Golf", "golf"),
+            ("Fight Night", "UFC MMA", "combat"),
+            ("Monday Night Raw", "WWE Wrestling", "wrestling"),
+            ("O'Reilly Auto Parts Series", "NASCAR Racing", "racing"),
+            ("Boston Cannons at New York Atlas", "PLL Lacrosse", "lacrosse"),
+            ("NCAA Women's Volleyball", "Volleyball", "other"),
+            ("North Shore at Central Catholic", "High School Football", "other"),
+            ("American Legion World Series", "American Legion Baseball", "other"),
+            ("Virginia at Michigan", "Junior League Baseball", "little-league"),
+            ("Halifax Tides at Montreal Roses", "Northern Super League", "soccer")
+        ]
+        guard taxonomySamples.allSatisfy({ sample in
+            SportsCategoryClassifier.categoryID(
+                title: sample.0,
+                upstreamCategory: sample.1
+            ) == sample.2
+        }),
               SportsCategoryClassifier.categoryID(
                 title: "Pardon the Interruption",
                 upstreamCategory: "Studio"

@@ -622,7 +622,7 @@ enum HTMLCatalogParser {
                 return cleanTitle(action.label)
             }
             let normalizedFeeds = feedLabels.map { $0.lowercased() }
-            let canInferBaseballSides = categoryID == "baseball" &&
+            let canInferBaseballSides = (categoryID == "baseball" || SportsCategoryOption.baseballCategoryIDs.contains(categoryID)) &&
                 parsedActions.count == 2 &&
                 Set(normalizedFeeds.filter { !$0.isEmpty }).count == 2 &&
                 normalizedFeeds.allSatisfy { !isNamedBroadcastRole($0) }
@@ -1327,7 +1327,7 @@ enum SportsScheduleEnricher {
         _ snapshot: SportsScheduleSnapshot,
         into playbackCategories: [CatalogCategory]
     ) -> [CatalogCategory] {
-        var categories = playbackCategories
+        var categories = normalizedPlaybackCategories(playbackCategories)
 
         let eventsByPlaybackAffinity = snapshot.events.sorted {
             let leftRank = playbackAffinityRank($0, relativeTo: snapshot.generatedAt)
@@ -1448,29 +1448,54 @@ enum SportsScheduleEnricher {
     }
 
     private static func categoryID(for event: SportsScheduleEvent) -> String? {
-        let value = [event.sport, event.league, event.leagueID]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-        if value.contains("football") || value.contains("nfl") || value.contains("ncaaf") { return "football" }
-        if value.contains("baseball") || value.contains("mlb") { return "baseball" }
-        if value.contains("hockey") || value.contains("nhl") { return "hockey" }
-        if value.contains("basketball") || value.contains("nba") || value.contains("wnba") || value.contains("ncaab") { return "basketball" }
-        if value.contains("soccer") || value.contains("mls") || value.contains("uefa") || value.contains("fifa") { return "soccer" }
-        if value.contains("mma") || value.contains("ufc") || value.contains("boxing") { return "combat" }
-        if value.contains("racing") || value.contains("formula 1") || value.contains("f1") { return "racing" }
-        return nil
+        SportsCategoryClassifier.categoryID(for: MediaItem(
+            id: "schedule|\(event.eventID)",
+            title: event.title,
+            subtitle: event.status,
+            imageURL: event.thumbnailURL,
+            categoryID: "uncategorized",
+            playback: .unavailable,
+            sportsEvent: event
+        ))
     }
 
     private static func categoryPresentation(for categoryID: String) -> (title: String, symbol: String) {
-        switch categoryID {
-        case "football": return ("Football", "football.fill")
-        case "baseball": return ("Baseball", "baseball.fill")
-        case "hockey": return ("Hockey", "hockey.puck.fill")
-        case "basketball": return ("Basketball", "basketball.fill")
-        case "soccer": return ("Soccer", "soccerball")
-        case "combat": return ("Combat", "figure.boxing")
-        case "racing": return ("Racing", "flag.checkered")
-        default: return ("More", "square.grid.2x2.fill")
+        guard let option = SportsCategoryOption.option(for: categoryID) else {
+            return ("Other", "square.grid.2x2.fill")
+        }
+        return (option.title, option.symbol)
+    }
+
+    private static func normalizedPlaybackCategories(_ categories: [CatalogCategory]) -> [CatalogCategory] {
+        var normalized: [CatalogCategory] = []
+        for item in categories.flatMap(\.items) {
+            guard let categoryID = SportsCategoryClassifier.categoryID(for: item) else { continue }
+            let recategorized = MediaItem(
+                id: item.id,
+                title: item.title,
+                subtitle: item.subtitle,
+                imageURL: item.imageURL,
+                categoryID: categoryID,
+                playbackOptions: item.playbackOptions,
+                sportsEvent: item.sportsEvent,
+                providerEventDateCode: item.providerEventDateCode
+            )
+            if let index = normalized.firstIndex(where: { $0.id == categoryID }) {
+                normalized[index].items.append(recategorized)
+            } else {
+                let presentation = categoryPresentation(for: categoryID)
+                normalized.append(CatalogCategory(
+                    id: categoryID,
+                    title: presentation.title,
+                    symbol: presentation.symbol,
+                    items: [recategorized]
+                ))
+            }
+        }
+        return normalized.sorted { left, right in
+            let leftIndex = SportsCategoryOption.all.firstIndex(where: { $0.id == left.id }) ?? .max
+            let rightIndex = SportsCategoryOption.all.firstIndex(where: { $0.id == right.id }) ?? .max
+            return leftIndex < rightIndex
         }
     }
 

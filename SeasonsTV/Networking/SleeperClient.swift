@@ -3,6 +3,9 @@ import Foundation
 actor SleeperClient: FantasyFootballProviding {
     private let session: URLSession
     private let baseURL = URL(string: "https://api.sleeper.app/v1/")!
+    private var cachedPlayerDirectory: [String: SleeperPlayerProfile] = [:]
+    private var cachedPlayerIDs = Set<String>()
+    private var playerDirectoryFetchedAt: Date?
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -39,13 +42,34 @@ actor SleeperClient: FantasyFootballProviding {
         let leagueID = try SleeperAPIParser.validatedIdentifier(leagueID, label: "league")
         async let stateData = data(path: "state/nfl")
         let state = try await SleeperAPIParser.nflState(data: stateData)
-        let matchupsData = try await data(path: "league/\(leagueID)/matchups/\(state.week)")
+        let matchupPayload = try await data(path: "league/\(leagueID)/matchups/\(state.week)")
+        let playerIDs = (try? SleeperAPIParser.starterIDs(data: matchupPayload)) ?? []
+        let players = (try? await loadPlayerDirectory(playerIDs: playerIDs)) ?? [:]
         return try SleeperAPIParser.matchup(
             leagueID: leagueID,
             rosterID: rosterID,
             week: state.week,
-            data: matchupsData
+            data: matchupPayload,
+            players: players
         )
+    }
+
+    private func loadPlayerDirectory(
+        playerIDs: Set<String>,
+        referenceDate: Date = Date()
+    ) async throws -> [String: SleeperPlayerProfile] {
+        guard !playerIDs.isEmpty else { return [:] }
+        if let playerDirectoryFetchedAt,
+           referenceDate.timeIntervalSince(playerDirectoryFetchedAt) < 24 * 60 * 60,
+           playerIDs.isSubset(of: cachedPlayerIDs) {
+            return cachedPlayerDirectory
+        }
+        let data = try await data(path: "players/nfl")
+        let directory = try SleeperAPIParser.playerDirectory(data: data, including: playerIDs)
+        cachedPlayerDirectory.merge(directory) { _, incoming in incoming }
+        cachedPlayerIDs.formUnion(playerIDs)
+        playerDirectoryFetchedAt = referenceDate
+        return cachedPlayerDirectory
     }
 
     private func data(
@@ -165,6 +189,7 @@ enum SleeperAPIParser {
         rosterID: Int,
         week: Int,
         data: Data,
+        players: [String: SleeperPlayerProfile] = [:],
         fetchedAt: Date = Date()
     ) throws -> FantasyMatchupSnapshot {
         let entries = try JSONDecoder().decode([MatchupResponse].self, from: data)
@@ -174,6 +199,30 @@ enum SleeperAPIParser {
         let opponent = user.matchupID.flatMap { matchupID in
             entries.first { $0.rosterID != rosterID && $0.matchupID == matchupID }
         }
+        let leagueMatchups = Dictionary(grouping: entries) { entry in
+            entry.matchupID.map { "matchup:\($0)" } ?? "bye:\(entry.rosterID)"
+        }
+        .map { identifier, entries in
+            FantasyLeagueMatchup(
+                id: identifier,
+                matchupID: entries.first?.matchupID,
+                participants: entries
+                    .map {
+                        FantasyMatchupParticipant(
+                            rosterID: $0.rosterID,
+                            points: $0.customPoints ?? $0.points ?? 0,
+                            starters: lineup(from: $0, players: players)
+                        )
+                    }
+                    .sorted { $0.rosterID < $1.rosterID }
+            )
+        }
+        .sorted { left, right in
+            if left.matchupID != right.matchupID {
+                return (left.matchupID ?? Int.max) < (right.matchupID ?? Int.max)
+            }
+            return left.id < right.id
+        }
         return FantasyMatchupSnapshot(
             leagueID: leagueID,
             week: week,
@@ -182,8 +231,52 @@ enum SleeperAPIParser {
             opponentRosterID: opponent?.rosterID,
             userPoints: user.customPoints ?? user.points ?? 0,
             opponentPoints: opponent.map { $0.customPoints ?? $0.points ?? 0 },
-            fetchedAt: fetchedAt
+            fetchedAt: fetchedAt,
+            userStarters: lineup(from: user, players: players),
+            opponentStarters: opponent.map { lineup(from: $0, players: players) } ?? [],
+            leagueMatchups: leagueMatchups
         )
+    }
+
+    static func playerDirectory(
+        data: Data,
+        including playerIDs: Set<String>? = nil
+    ) throws -> [String: SleeperPlayerProfile] {
+        let decoded = try JSONDecoder().decode([String: PlayerResponse].self, from: data)
+        return decoded.reduce(into: [:]) { result, entry in
+            guard playerIDs?.contains(entry.key) ?? true else { return }
+            let player = entry.value
+            let joinedName = [player.firstName, player.lastName]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            result[entry.key] = SleeperPlayerProfile(
+                name: firstNonempty([player.fullName, joinedName]) ?? "Unknown player",
+                position: firstNonempty([player.position]),
+                team: firstNonempty([player.team])
+            )
+        }
+    }
+
+    static func starterIDs(data: Data) throws -> Set<String> {
+        Set(try JSONDecoder().decode([MatchupResponse].self, from: data).flatMap { $0.starters ?? [] })
+    }
+
+    private static func lineup(
+        from entry: MatchupResponse,
+        players: [String: SleeperPlayerProfile]
+    ) -> [FantasyPlayerWeek] {
+        (entry.starters ?? []).enumerated().map { index, playerID in
+            let player = players[playerID]
+            let fallbackPoints = entry.startersPoints.flatMap { index < $0.count ? $0[index] : nil }
+            return FantasyPlayerWeek(
+                id: playerID,
+                name: player?.name ?? "Player \(playerID)",
+                position: player?.position,
+                nflTeam: player?.team,
+                points: entry.playersPoints?[playerID] ?? fallbackPoints ?? 0
+            )
+        }
     }
 
     private static func firstNonempty(_ values: [String?]) -> String? {
@@ -266,14 +359,42 @@ enum SleeperAPIParser {
         let matchupID: Int?
         let points: Double?
         let customPoints: Double?
+        let starters: [String]?
+        let startersPoints: [Double]?
+        let playersPoints: [String: Double]?
 
         enum CodingKeys: String, CodingKey {
             case rosterID = "roster_id"
             case matchupID = "matchup_id"
             case points
             case customPoints = "custom_points"
+            case starters
+            case startersPoints = "starters_points"
+            case playersPoints = "players_points"
         }
     }
+
+    private struct PlayerResponse: Decodable {
+        let fullName: String?
+        let firstName: String?
+        let lastName: String?
+        let position: String?
+        let team: String?
+
+        enum CodingKeys: String, CodingKey {
+            case fullName = "full_name"
+            case firstName = "first_name"
+            case lastName = "last_name"
+            case position
+            case team
+        }
+    }
+}
+
+struct SleeperPlayerProfile: Sendable {
+    let name: String
+    let position: String?
+    let team: String?
 }
 
 enum SleeperAPIError: LocalizedError {

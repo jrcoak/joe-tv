@@ -15,19 +15,61 @@ struct SportsCategoryOption: Identifiable {
     let symbol: String
 
     static let all: [SportsCategoryOption] = [
-        .init(id: "football", title: "Football", symbol: "football.fill"),
-        .init(id: "baseball", title: "Baseball", symbol: "baseball.fill"),
-        .init(id: "hockey", title: "Hockey", symbol: "hockey.puck.fill"),
-        .init(id: "basketball", title: "Basketball", symbol: "basketball.fill"),
+        .init(id: "nfl", title: "NFL", symbol: "football.fill"),
+        .init(id: "college-football", title: "College Football / NCAAF", symbol: "graduationcap.fill"),
+        .init(id: "cfl", title: "CFL", symbol: "football.fill"),
+        .init(id: "xfl", title: "XFL", symbol: "football.fill"),
+        .init(id: "mlb", title: "MLB", symbol: "baseball.fill"),
+        .init(id: "college-baseball", title: "College Baseball", symbol: "graduationcap.fill"),
+        .init(id: "softball", title: "Softball", symbol: "baseball.fill"),
+        .init(id: "little-league", title: "Little League", symbol: "baseball.fill"),
+        .init(id: "banana-ball", title: "Banana Ball", symbol: "baseball.fill"),
+        .init(id: "nhl", title: "NHL", symbol: "hockey.puck.fill"),
+        .init(id: "college-hockey", title: "NCAA Ice Hockey", symbol: "graduationcap.fill"),
+        .init(id: "womens-college-hockey", title: "NCAA Women’s Ice Hockey", symbol: "graduationcap.fill"),
+        .init(id: "field-hockey", title: "Field Hockey", symbol: "figure.field.hockey"),
+        .init(id: "nba", title: "NBA", symbol: "basketball.fill"),
+        .init(id: "wnba", title: "WNBA", symbol: "basketball.fill"),
+        .init(id: "mens-college-basketball", title: "Men’s College Basketball", symbol: "graduationcap.fill"),
+        .init(id: "womens-college-basketball", title: "Women’s College Basketball", symbol: "graduationcap.fill"),
         .init(id: "soccer", title: "Soccer", symbol: "soccerball"),
         .init(id: "tennis", title: "Tennis", symbol: "tennis.racket"),
+        .init(id: "pickleball", title: "Pickleball", symbol: "tennis.racket"),
         .init(id: "golf", title: "Golf", symbol: "figure.golf"),
         .init(id: "combat", title: "Combat", symbol: "figure.boxing"),
+        .init(id: "wrestling", title: "Wrestling / WWE", symbol: "figure.wrestling"),
         .init(id: "racing", title: "Racing", symbol: "flag.checkered"),
-        .init(id: "volleyball", title: "Volleyball", symbol: "volleyball.fill"),
         .init(id: "lacrosse", title: "Lacrosse", symbol: "figure.lacrosse"),
         .init(id: "other", title: "Other", symbol: "square.grid.2x2.fill")
     ]
+
+    static let footballCategoryIDs: Set<String> = ["nfl", "college-football", "cfl", "xfl"]
+    static let baseballCategoryIDs: Set<String> = ["mlb", "college-baseball", "softball", "little-league", "banana-ball"]
+    static let hockeyCategoryIDs: Set<String> = ["nhl", "college-hockey", "womens-college-hockey", "field-hockey"]
+    static let basketballCategoryIDs: Set<String> = ["nba", "wnba", "mens-college-basketball", "womens-college-basketball"]
+
+    static func option(for id: String) -> SportsCategoryOption? {
+        all.first(where: { $0.id == id })
+    }
+
+    static func migratingLegacySelection(_ stored: Set<String>) -> Set<String> {
+        let supported = Set(all.map(\.id))
+        var migrated = stored.intersection(supported)
+        let legacyGroups: [String: Set<String>] = [
+            "football": footballCategoryIDs,
+            "college": ["college-football"],
+            "baseball": baseballCategoryIDs,
+            "hockey": hockeyCategoryIDs,
+            "basketball": basketballCategoryIDs,
+            "tennis": ["tennis", "pickleball"],
+            "combat": ["combat", "wrestling"],
+            "volleyball": ["other"]
+        ]
+        for legacyID in stored {
+            migrated.formUnion(legacyGroups[legacyID] ?? [])
+        }
+        return migrated
+    }
 }
 
 struct MediaItem: Identifiable {
@@ -173,7 +215,6 @@ extension MediaItem {
     var isGenericSportsChannelShortcut: Bool {
         let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized.hasPrefix("espn") && normalized.contains("use direct link") { return true }
-        guard categoryID == "basketball" else { return false }
         return sportsEvent == nil && (normalized == "espn" || normalized == "espn 2")
     }
 
@@ -250,24 +291,66 @@ enum SportsCategoryClassifier {
             .joined(separator: " "))
 
         if isESPNStudioProgramming(value) { return nil }
-        if containsAny(value, ["soccer", "futbol", "la liga", "laliga", "eredivisie", "nwsl", "usl", "uefa", "fifa"]) {
+
+        let mentionsWomen = containsAny(value, ["women", "womens", "women s", "female"])
+        let mentionsCollege = containsAny(value, ["college", "collegiate", "ncaa", "ncaaf", "ncaab", "ncaam", "ncaaw"])
+
+        if containsAny(value, ["high school football", "american legion baseball", "women s pro baseball", "womens pro baseball"]) {
+            return "other"
+        }
+        if containsAny(value, ["little league", "junior league baseball"]) { return "little-league" }
+        if containsAny(value, ["banana ball", "savannah bananas"]) { return "banana-ball" }
+        if containsAny(value, ["softball"]) { return "softball" }
+        if containsAny(value, ["college baseball", "ncaa baseball", "necb"]) ||
+            (mentionsCollege && containsAny(value, ["baseball"])) {
+            return "college-baseball"
+        }
+        if containsAny(value, ["mlb", "major league baseball", "baseball"]) { return "mlb" }
+
+        if containsAny(value, ["field hockey"]) { return "field-hockey" }
+        if mentionsWomen && mentionsCollege && containsAny(value, ["ice hockey", "hockey"]) {
+            return "womens-college-hockey"
+        }
+        if mentionsCollege && containsAny(value, ["ice hockey", "hockey"]) { return "college-hockey" }
+        if containsAny(value, ["nhl", "national hockey league", "ice hockey", "hockey"]) { return "nhl" }
+
+        if containsAny(value, ["wnba", "women s national basketball association"]) { return "wnba" }
+        if mentionsWomen && mentionsCollege && containsAny(value, ["basketball", "ncaaw", "wcbb"]) {
+            return "womens-college-basketball"
+        }
+        if mentionsCollege && containsAny(value, ["basketball", "ncaab", "ncaam", "mcbb"]) {
+            return "mens-college-basketball"
+        }
+        if containsAny(value, ["nba", "national basketball association", "basketball"]) { return "nba" }
+
+        if containsAny(value, ["cfl", "canadian football league"]) { return "cfl" }
+        if containsAny(value, ["xfl"]) { return "xfl" }
+        if containsAny(value, ["ncaaf", "college football", "ncaa football", "cfb"]) ||
+            (mentionsCollege && containsAny(value, ["football"])) {
+            return "college-football"
+        }
+        if containsAny(value, ["nfl", "national football league", "football"]) { return "nfl" }
+
+        if containsAny(value, [
+            "soccer", "futbol", "la liga", "laliga", "eredivisie", "nwsl", "usl", "uefa", "fifa", "mls",
+            "northern super league", "german 3 liga", "fa community shield"
+        ]) {
             return "soccer"
         }
-        if containsAny(value, ["baseball", "softball", "mlb", "little league", "banana ball", "necb"] ) {
-            return "baseball"
-        }
-        if containsAny(value, ["basketball", "nba", "wnba", "ncaab"]) { return "basketball" }
-        if containsAny(value, ["field hockey", "ice hockey", "hockey", "nhl"]) { return "hockey" }
-        if containsAny(value, ["tennis", "us open", "wimbledon", "atp", "wta", "pickleball"]) { return "tennis" }
         if containsAny(value, ["golf", "pga", "lpga", "ryder cup"]) { return "golf" }
-        if containsAny(value, ["football", "nfl", "ncaaf", "cfl", "xfl"]) { return "football" }
-        if containsAny(value, ["volleyball"]) { return "volleyball" }
-        if containsAny(value, ["lacrosse", "premier lacrosse", "womens lacrosse", "pll", "wll"]) { return "lacrosse" }
-        if containsAny(value, ["boxing", "mma", "ufc", "professional fighters league", "wwe", "wrestling", "most valuable promotions"]) {
+        if containsAny(value, ["pickleball"]) { return "pickleball" }
+        if containsAny(value, ["tennis", "us open", "wimbledon", "atp", "wta", "roland garros", "australian open"]) {
+            return "tennis"
+        }
+        if containsAny(value, ["wwe", "wrestling"]) { return "wrestling" }
+        if containsAny(value, ["boxing", "mma", "ufc", "professional fighters league", "pfl", "most valuable promotions"]) {
             return "combat"
         }
-        if containsAny(value, ["racing", "nascar", "formula 1", "indycar", "motogp", "grand prix"]) { return "racing" }
-        if containsAny(value, ["surf", "water polo", "nineball", "billiard", "sport fishing", "poker"]) { return "other" }
+        if containsAny(value, ["racing", "nascar", "formula 1", "formula one", "indycar", "motogp", "grand prix"]) { return "racing" }
+        if containsAny(value, ["lacrosse", "premier lacrosse", "womens lacrosse", "women s lacrosse", "pll", "wll"]) { return "lacrosse" }
+        if containsAny(value, ["volleyball", "surf", "surfing", "water polo", "nineball", "nine ball", "billiard", "billiards", "sport fishing", "fishing", "poker", "other"]) {
+            return "other"
+        }
         return nil
     }
 
@@ -294,8 +377,8 @@ enum SportsCategoryClassifier {
             league: item.sportsEvent?.league
         )
         if let classified { return classified }
-        if item.categoryID == "college" { return "football" }
-        return item.categoryID == "other" ? "other" : nil
+        if item.categoryID == "college" { return "college-football" }
+        return "other"
     }
 
     private static func normalized(_ value: String) -> String {
@@ -308,7 +391,7 @@ enum SportsCategoryClassifier {
     }
 
     private static func containsAny(_ value: String, _ candidates: [String]) -> Bool {
-        candidates.contains { value.contains(" \($0) ") || value.contains(" \($0)") }
+        candidates.contains { value.contains(normalized($0)) }
     }
 
     private static func isESPNStudioProgramming(_ value: String) -> Bool {
@@ -628,6 +711,57 @@ struct FantasyMatchupSnapshot: Equatable, Sendable {
     let userPoints: Double
     let opponentPoints: Double?
     let fetchedAt: Date
+    let userStarters: [FantasyPlayerWeek]
+    let opponentStarters: [FantasyPlayerWeek]
+    let leagueMatchups: [FantasyLeagueMatchup]
+
+    init(
+        leagueID: String,
+        week: Int,
+        matchupID: Int?,
+        userRosterID: Int,
+        opponentRosterID: Int?,
+        userPoints: Double,
+        opponentPoints: Double?,
+        fetchedAt: Date,
+        userStarters: [FantasyPlayerWeek] = [],
+        opponentStarters: [FantasyPlayerWeek] = [],
+        leagueMatchups: [FantasyLeagueMatchup] = []
+    ) {
+        self.leagueID = leagueID
+        self.week = week
+        self.matchupID = matchupID
+        self.userRosterID = userRosterID
+        self.opponentRosterID = opponentRosterID
+        self.userPoints = userPoints
+        self.opponentPoints = opponentPoints
+        self.fetchedAt = fetchedAt
+        self.userStarters = userStarters
+        self.opponentStarters = opponentStarters
+        self.leagueMatchups = leagueMatchups
+    }
+}
+
+struct FantasyPlayerWeek: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let position: String?
+    let nflTeam: String?
+    let points: Double
+}
+
+struct FantasyMatchupParticipant: Identifiable, Equatable, Sendable {
+    let rosterID: Int
+    let points: Double
+    let starters: [FantasyPlayerWeek]
+
+    var id: Int { rosterID }
+}
+
+struct FantasyLeagueMatchup: Identifiable, Equatable, Sendable {
+    let id: String
+    let matchupID: Int?
+    let participants: [FantasyMatchupParticipant]
 }
 
 struct SportsEventDetailIdentity: Hashable, Sendable {
@@ -1049,6 +1183,13 @@ struct DRMConfiguration {
     }
 }
 
+struct PlaybackSubtitleOption: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let languageCode: String?
+    let isClosedCaption: Bool
+}
+
 @MainActor
 final class PlaybackSession: ObservableObject, Identifiable {
     let id = UUID()
@@ -1057,10 +1198,15 @@ final class PlaybackSession: ObservableObject, Identifiable {
     let isLivePlayback: Bool
     @Published private(set) var playbackError: String?
     @Published private(set) var isReady = false
+    @Published private(set) var subtitleOptions: [PlaybackSubtitleOption] = []
+    @Published private(set) var selectedSubtitleOptionID: String?
     private let startAtLiveEdge: Bool
     private let resourceLoader: FairPlayResourceLoader?
     private var statusObservation: NSKeyValueObservation?
     private var preparationTimeout: Task<Void, Never>?
+    private var subtitleLoadTask: Task<Void, Never>?
+    private var subtitleGroup: AVMediaSelectionGroup?
+    private var subtitleMediaOptions: [String: AVMediaSelectionOption] = [:]
     private var didPositionAtLiveEdge = false
     private var readyHandler: (() -> Void)?
     private var failureHandler: ((String) -> Void)?
@@ -1133,6 +1279,7 @@ final class PlaybackSession: ObservableObject, Identifiable {
         switch AVPlayerItem.Status(rawValue: rawValue) {
         case .readyToPlay:
             positionAtLiveEdgeIfNeeded()
+            refreshSubtitleOptions()
             let firstReady = !isReady
             isReady = true
             preparationTimeout?.cancel()
@@ -1156,6 +1303,89 @@ final class PlaybackSession: ObservableObject, Identifiable {
         guard startAtLiveEdge, !didPositionAtLiveEdge else { return }
         didPositionAtLiveEdge = true
         player.seek(to: .positiveInfinity)
+    }
+
+    var selectedSubtitleTitle: String? {
+        guard let selectedSubtitleOptionID else { return nil }
+        return subtitleOptions.first(where: { $0.id == selectedSubtitleOptionID })?.title
+    }
+
+    func refreshSubtitleOptions() {
+        subtitleLoadTask?.cancel()
+        guard let item = player.currentItem else {
+            clearSubtitleOptions()
+            return
+        }
+
+        let asset = item.asset
+        subtitleLoadTask = Task { @MainActor [weak self, weak item] in
+            do {
+                guard let group = try await asset.loadMediaSelectionGroup(for: .legible),
+                      !Task.isCancelled,
+                      let self,
+                      let item,
+                      item === self.player.currentItem else { return }
+                self.installSubtitleOptions(group, for: item)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.clearSubtitleOptions()
+            }
+        }
+    }
+
+    func selectSubtitle(_ identifier: String?) {
+        guard let item = player.currentItem,
+              let subtitleGroup else { return }
+
+        if let identifier,
+           let option = subtitleMediaOptions[identifier] {
+            item.select(option, in: subtitleGroup)
+            selectedSubtitleOptionID = identifier
+        } else if subtitleGroup.allowsEmptySelection {
+            item.select(nil, in: subtitleGroup)
+            selectedSubtitleOptionID = nil
+        }
+    }
+
+    private func installSubtitleOptions(_ group: AVMediaSelectionGroup, for item: AVPlayerItem) {
+        let entries = group.options.enumerated().map { index, option -> (PlaybackSubtitleOption, AVMediaSelectionOption) in
+            let languageCode = option.extendedLanguageTag ?? option.locale?.identifier
+            let isClosedCaption = option.hasMediaCharacteristic(.transcribesSpokenDialogForAccessibility)
+                || option.hasMediaCharacteristic(.describesMusicAndSoundForAccessibility)
+            let title = isClosedCaption
+                        && !option.displayName.localizedCaseInsensitiveContains("CC")
+                        && !option.displayName.localizedCaseInsensitiveContains("SDH")
+                ? "\(option.displayName) · CC"
+                : option.displayName
+            let identifier = [languageCode ?? "und", option.displayName, String(index)]
+                .joined(separator: "|")
+            return (
+                PlaybackSubtitleOption(
+                    id: identifier,
+                    title: title,
+                    languageCode: languageCode,
+                    isClosedCaption: isClosedCaption
+                ),
+                option
+            )
+        }
+
+        subtitleGroup = group
+        subtitleOptions = entries.map { $0.0 }
+        subtitleMediaOptions = Dictionary(uniqueKeysWithValues: entries.map { ($0.0.id, $0.1) })
+
+        if let selected = item.currentMediaSelection.selectedMediaOption(in: group) {
+            selectedSubtitleOptionID = entries.first(where: { $0.1.isEqual(selected) })?.0.id
+        } else {
+            selectedSubtitleOptionID = nil
+        }
+    }
+
+    private func clearSubtitleOptions() {
+        subtitleGroup = nil
+        subtitleOptions = []
+        subtitleMediaOptions = [:]
+        selectedSubtitleOptionID = nil
     }
 
     private func startPreparationTimeout() {
@@ -1235,6 +1465,7 @@ final class PlaybackSession: ObservableObject, Identifiable {
 
     deinit {
         preparationTimeout?.cancel()
+        subtitleLoadTask?.cancel()
     }
 }
 

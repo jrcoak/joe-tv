@@ -2225,7 +2225,7 @@ private struct SportsView: View {
     }
 
     private func baseballPrimaryOptions(for item: MediaItem) -> [MediaItem.PlaybackOption] {
-        guard item.categoryID == "baseball",
+        guard SportsCategoryOption.baseballCategoryIDs.contains(item.categoryID),
               item.sportsPlaybackAvailable(at: Date()) else { return [] }
         let playable = item.playbackOptions.filter(isPlayableOption)
         return playable.filter { option in
