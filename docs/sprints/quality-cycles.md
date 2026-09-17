@@ -1,6 +1,6 @@
 # Joe-TV quality cycles
 
-Status: five bounded implementation cycles are assembled on local `codex/joe-tv-team`. Latest application source `98844e3ebdf82396011be1365da630a9addd1ddd`, version 1.0 / build 7, is installed in the configured simulator. S4/S5 timing/studio corrections and Filter Sports layout have fresh test/build and sampled normal-session evidence. Filter Sports is open for Joe with login and original selections preserved. Earlier S1–S3 full UI/async acceptance remains pending. No release or production deployment has been performed.
+Status: five bounded implementation cycles are assembled on local `codex/joe-tv-team`. Latest application source `98844e3ebdf82396011be1365da630a9addd1ddd`, version 1.0 / build 7, is installed in the configured simulator. S4/S5 timing/studio corrections and Filter Sports layout have fresh test/build and sampled normal-session evidence. Filter Sports is open for Joe with login and original selections preserved. Earlier S1–S3 full UI/async acceptance remains pending. The work was subsequently merged/pushed to main and uploaded as TestFlight1.0(8); Apple processing began. No production service deployment was performed. See `../releases/1.0-8.md`.
 
 ## Implemented
 

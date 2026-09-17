@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S4/S5 fixes are installed and verified in Simulator: truthful Sports timing, observed studio exclusions, and repaired Filter Sports layout. Corrected filter is open for Joe; no agent owns runtime. Earlier S1–S3 full UI acceptance remains pending.**
+Status: **Verified team work is merged and pushed to main. Version 1.0 build8 uploaded successfully to App Store Connect and entered processing; availability not yet verified. PM owns this release. The previously verified simulator app remains open for Joe.**
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -10,7 +10,7 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 
 | Role | Exact task ID | Host | Worktree | Branch | Assignment |
 | --- | --- | --- | --- | --- | --- |
-| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | S5 delivered |
+| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | Build8 released; processing pending |
 | Product Design | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` | local | `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV` | `codex/joe-tv-design-s2` | S2-DESIGN complete |
 | tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s5` | S5 complete |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
@@ -87,3 +87,7 @@ QA stopped when Joe resumed input and returned runtime to him. His 11:55 screens
 Final application source `98844e3ebdf82396011be1365da630a9addd1ddd` is installed in the dedicated simulator with configured metadata and login/preferences retained. App source `4a83b0f` repairs only the Sports filter sheet; Services follow-up `acaec47` excludes the two observed studio titles NFL Total Access and ACC Network Football Podcast. Fresh final smoke and configured build passed. QA verified all26 categories, long names, focus/scroll bounds, toggle/reopen persistence and both dismiss paths. Design accepted sampled top/middle/bottom captures. See `sprints/S5-qa.md` for exact source/artifact and evidence limits.
 
 Normal final data showed Live0/Upcoming25 for Joe's original five sports; temporarily including NCAAF produced only the remaining game instead of the two excluded shows. QA restored NCAAF off and left **Filter Sports open for Joe**, with no further input planned. Runtime ownership is Joe's; coordinate any future testing/replacement first. Older source-specific UI/async/hardware acceptance remains separate. Original main checkout is still `138c271`, only unrelated SHELF untracked, untouched. No release/push/upload/backend change.
+
+## Build8 release — current checkpoint
+
+Joe explicitly authorized main integration and TestFlight upload (TEAM-029). Main was fast-forwarded to the team history and release commit `bf115ab` bumped build8; origin/main push succeeded. Signed physical-tvOS archive/config preflight and upload succeeded on September17 at12:24EDT. Apple's last observed state was package processing, not confirmed tester availability. See `releases/1.0-8.md`. Prior statements that main is untouched or release is unauthorized are historical and superseded for this delivery. Simulator ownership remains Joe's; no device/runtime change was needed.
