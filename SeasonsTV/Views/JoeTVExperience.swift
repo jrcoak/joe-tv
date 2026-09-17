@@ -1,5 +1,6 @@
 import AVKit
 import SwiftUI
+import UIKit
 
 // MARK: - Home
 
@@ -2693,20 +2694,54 @@ private struct JoeTVProgramPreview: View {
     }
 }
 
-private struct JoeTVMutedPreviewPlayer: UIViewControllerRepresentable {
+private struct JoeTVMutedPreviewPlayer: UIViewRepresentable {
     let player: AVPlayer
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.showsPlaybackControls = false
-        controller.videoGravity = .resizeAspectFill
-        return controller
+    func makeUIView(context: Context) -> JoeTVPreviewSurfaceView {
+        let view = JoeTVPreviewSurfaceView()
+        view.playerLayer.player = player
+        return view
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player { controller.player = player }
-        controller.showsPlaybackControls = false
+    func updateUIView(_ view: JoeTVPreviewSurfaceView, context: Context) {
+        if view.playerLayer.player !== player {
+            view.playerLayer.player = player
+        }
+    }
+
+    static func dismantleUIView(_ view: JoeTVPreviewSurfaceView, coordinator: Void) {
+        // The guide owns pause/cancellation; this decorative surface only attaches video.
+        view.playerLayer.player = nil
+    }
+}
+
+private final class JoeTVPreviewSurfaceView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    override var canBecomeFocused: Bool { false }
+
+    var playerLayer: AVPlayerLayer {
+        guard let playerLayer = layer as? AVPlayerLayer else {
+            preconditionFailure("JoeTVPreviewSurfaceView must use AVPlayerLayer")
+        }
+        return playerLayer
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureSurface()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureSurface()
+    }
+
+    private func configureSurface() {
+        backgroundColor = .black
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        accessibilityElementsHidden = true
+        playerLayer.videoGravity = .resizeAspectFill
     }
 }
 
