@@ -2,11 +2,11 @@
 
 ## 1. Assignment and evidence boundary
 
-Joe-TV already has a coherent television experience. Preserve its favorites-led Home, full-width Sports board, explicit tuning, and unobtrusive Fantasy presentation. The best next design work is to explain availability and freshness, then validate the remaining focus and readability risks on a television.
+Joe-TV already has a coherent television experience. Preserve its favorites-led Home, full-width Sports board, explicit tuning, and unobtrusive Fantasy presentation. Under TEAM-2, the first implementation recommendation is UI polish, shorter watching paths, predictable focus, and measured responsiveness. Section 7 supersedes the original proposal ranking; the source findings remain valid.
 
 | Field | Accepted value |
 | --- | --- |
-| Assignment / spec | M0-DESIGN / TEAM-1 |
+| Assignment / spec | M0-DESIGN / TEAM-2 accepted; original source assessment under TEAM-1 |
 | Specialist task | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` on `local` |
 | PM task | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` |
 | App baseline | `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8` |
@@ -158,7 +158,7 @@ All three are proposals, not accepted implementation. Effort is relative and pro
 
 ## 5. Ownership, documentation discrepancies, and decisions still needed
 
-This assignment changes no app symbols. Suggested order is D-I1 first, D-I2 second, and D-I3 as a small exploration. Captions and the focus audit are maintenance companions PM can scope separately. Actual priority belongs to Joe/PM after App, Playback, Services, QA, and SecOps assessments are combined.
+This assignment changes no app symbols. The original TEAM-1 suggestion was D-I1 first, D-I2 second, and D-I3 as a small exploration. TEAM-2 replaces that ordering with the friction/performance-first roadmap in section 7. The three proposals remain available for subsequent prioritization.
 
 | Topic | Ownership / next dependency |
 | --- | --- |
@@ -193,3 +193,29 @@ Outstanding questions are validation dependencies, not reasons to block this rep
 Requested QA coverage is bounded: baseline navigation/return-focus journey, nested broadcast Back, empty/no-track captions, forced switch failure, no-data/failed Fantasy states, long text/large rosters, short guide slots, and outline visibility at scroll edges. Use the existing debug fixture hooks where suitable (`AppModel`'s `JOE_TV_DEBUG_QUICK_SWITCH`, `JOE_TV_DEBUG_FANTASY_ZONE`, `JOE_TV_DEBUG_FANTASY_UPCOMING`, and suitable clear caption media via `JOE_TV_DEBUG_CAPTIONS_URL`); those hooks were inspected, not executed. Missing failure/size fixtures are a proposed QA dependency, not permission for Design to add code.
 
 M0-DESIGN acceptance is satisfied by this baseline-specific report, two annotated journeys, six evidence-backed finding groups, and three bounded proposals with ownership, experiments, and success criteria. Runtime product acceptance remains pending the independently owned evidence above. Commit only this report, hand its exact commit to PM for sequential integration, then stop this assignment.
+
+## 7. TEAM-2 addendum — make ordinary watching feel effortless
+
+**Direction accepted:** read `spec.md`, `docs/decisions.md`, and `docs/assignments/M0.md` directly from commit `25f0b74db3b0fae8cc29be49cb95d3a179f7b934` using `git show`. TEAM-013 places UI polish, performance, fewer heavy click paths, and exceptionally simple navigation first. Joe likes the current visual direction; a new shell or more features are not prerequisites for improvement. This addendum starts from report commit `7cd3200dd96b0eb12c598a3caa108d3f3d68f24f`; it changes only this report and does not advance the assessed app baseline. No additional runtime tests were run.
+
+### First milestone proposal: remove friction from the existing surfaces
+
+| Friction map, source evidence | Proposed change | Acceptance / dependency |
+| --- | --- | --- |
+| Select on a guide program opens `JoeTVProgramActionsView`, then Watch channel starts playback. Channel-name buttons already tune directly. (`JoeTVGuideView.body`, `JoeTVGuideGrid.programRow` in `SeasonsTV/Views/JoeTVExperience.swift`.) | For a program airing now, Select tunes directly; its title/synopsis remain above the grid. Future programs retain the information sheet, with any channel action clearly labeled as watching the channel now. | One Select from a focused current-program cell to playback; no tuning on focus; future programs never imply future playback. App + Playback; QA checks missing/expired EPG and the time boundary. |
+| Broadcast stage Back focuses the first group; browse return and drawer close have fixed focus destinations (D-F4). | Restore the exact invoking item/control and unwind one layer consistently; define a nearby fallback when that item no longer exists. | Zero corrective refocus presses after a layer closes while its origin remains present. App/Playback; PM allocates shared origin state only if needed. |
+| Dense supporting text, focus-edge risk, inconsistent motion, and indirect empty-state instructions (D-F5/F6). | Polish existing typography/spacing, focus gutters, motion, and action wording from QA evidence. Make empty states lead directly to the relevant action. | Readable essential status, complete focus outline, no clipped roster content, and no instructions naming absent controls. Design reviews QA captures; no wholesale palette/layout change. |
+| Unavailable sports Select can appear unresponsive (D-F1); slow-feeling navigation has not been timed. | Explain availability primarily in the existing selected-event header; reserve a sheet for useful details after Select. Profile the normal navigation path before changing timing or data work. | Every Select has an understandable outcome; focus stays responsive during loading. D-I1 is supporting polish, not a mandate to add a modal to every sports interaction. App/Services/QA. |
+
+**Before/after example, source-derived counts rather than observed timings:** start with focus on a currently airing guide program. Today: **Select → program sheet → Select “Watch channel” → player**: two Select presses, an intervening sheet, then playback. Proposed: **Select → player**: one Select and no intervening sheet. On return, restore the same program cell and scroll position if still valid. This shortens this specific path by one Select and one surface; it does not claim to improve the already-direct channel-name path or eliminate stream preparation time. A future program still opens details. Validate this pair with fixtures before applying it broadly.
+
+**Responsiveness validation plan, not results:** QA/App should record a baseline and candidate on the same named simulator/device, fixed catalog, cache state, and media/network conditions. Measure input-to-visible-focus response, destination-to-usable-content, Select-to-preparing feedback, and Select-to-first-frame separately; record median/tail latency, press count, focus transitions, and corrective presses. Include navigation while metadata refreshes and a long guide/Sports list. Inspect main-thread work only where measurements identify a stall; preserve cached sports consolidation and nonblocking metadata. The guide's explicit 1.1-second preview dwell (`JoeTVGuideView.schedulePreview`) is intentional source timing, not a measured UI stall or permission to increase provider requests. Set numerical budgets after baseline evidence. Acceptance is the demonstrated shorter path, correct restoration, and no responsiveness regression under matched conditions; this report asserts no measured speed gain.
+
+### Future roadmap explorations, after the polish milestone
+
+| Direction | Smallest useful design experiment | Dependencies and acceptance |
+| --- | --- | --- |
+| **Left-side primary navigation**, informed by the Plex library pattern Joe likes. | Static remote-flow storyboard for a compact rail that expands when entered, with Home/Live TV/Sports and access to settings. Model entering from each content surface and returning to its last focused item before changing layout code. | App/Design define focus boundaries so Left still traverses guide time and horizontal cards; reaching the navigation boundary must be explicit and predictable. Preserve selected/focused distinction and Back layering. Compare end-to-end presses and wrong destinations against the current top bar, including a return from playback. Advance only if Joe finds it simpler without shrinking key content or adding navigation steps. Medium effort; source feasibility and desirability still unverified. |
+| **Curated Home across favorite channels and teams**, including Patriots/Bruins. | Home storyboard with a relevant team game, overlapping games, unavailable coverage, and offseason/no-game states. Keep the current channel-favorites rail; trial a small “Your teams” area or eligible featured game rather than replacing Home wholesale. | Add optional stable league/team preferences; never hard-code Joe's examples as universal defaults. Services validates event/date/source matching through the existing Mac mini → Personal Media API path. Preserve channel visibility/favorites and their saved ordering/choices with additive migration; use D-I1's availability states and 15-minute policy. Offseason falls back to useful channel content without a large empty panel. Acceptance: a matched favorite-team game is discoverable from Home, duplicates are consolidated, ambiguous matches do not claim watchability, and no existing channel choice is lost. Medium effort with identity dependencies; no new live-score architecture implied. |
+
+D-I2's trustworthy Fantasy states and D-I3's optional broadcast memory remain later candidates. Security/reliability review accompanies this roadmap; a confirmed urgent issue can require separate action, but speculative risk or feature expansion should not displace Joe's stated first priority. All stages here remain planning proposals until Joe/PM selects bounded implementation work.
