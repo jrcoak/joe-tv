@@ -1,6 +1,10 @@
-# S1 QA — baseline checkpoint
+# S1 QA — original candidate checkpoint
 
-Status: **baseline complete; ready for PM's exact integrated candidate. Final acceptance pending.**
+Status: **original candidate `f394d4d` not accepted: guide-origin playback loses usable input. Corrected candidate verification pending.**
+Latest checkpoint: September 16, 2026 EDT (September 17 UTC), S1-QA / TEAM-4. Candidate results are appended below; baseline provenance and findings remain historical.
+
+## Historical baseline
+
 Assignment: S1-QA baseline phase, TEAM-4. Checked September 16, 2026 EDT (September 17 UTC).
 Starting commit: `22f0fdf51b9b105bfb5b34cf5ecc2bb6e72a1340`.
 Branch: `codex/joe-tv-qa-s1`, created from that SHA after clean-status and branch-absence checks. Completed `codex/joe-tv-qa` preserved at `82e8ea5a9dd1e68158a96fa12c294d9f106d3b75`.
@@ -48,3 +52,59 @@ Fresh `scripts/team-check.sh smoke` at the exact S1 starting SHA: **PASS**, exit
 PM may supply the integrated candidate and fixture instructions. QA will verify its exact source, fresh build/smoke, then exercise the S1 matrix: Home favorite and empty Home/settings return; two guide origins with current/future/expired selection; no full-screen tune on focus; Sports/baseball/feed return; Fantasy/Quick Switch/control Back layers with spaced/repeated input; valid and removed-origin restoration; retained filters/preferences. Record unsupported fixture cases explicitly rather than asserting coverage. Preserve a few sanitized candidate screenshots with absolute paths for PM/Design and compare supported steps only.
 
 Real playback startup/first-frame, audio, captions on actual media, FairPlay, physical remote, couch readability and device performance remain pending appropriate media/hardware. This checkpoint does not accept the unfinished S1 candidate or authorize a release.
+
+## Original integrated candidate — bounded acceptance checkpoint
+
+Tested exact PM candidate **`f394d4d356851092ae579051cff5a5a667d53cdb`**, branch `codex/joe-tv-qa-s1-candidate`, created after clean-status and branch-absence checks. Earlier QA branches preserved. Scope: TEAM-4 S1 interaction acceptance against the candidate's checked-in S1 App/Playback/Design fixture and behavior notes. Only `docs/sprints/S1-qa.md` changed; no application or test code changed.
+
+Fresh `scripts/team-check.sh smoke`: **PASS**, exit 0, parser smoke passed; existing FairPlay SPC API deprecation warning. Fresh `scripts/team-check.sh build`: **PASS**, exit 0, `BUILD SUCCEEDED`, unsigned Debug generic tvOS Simulator, arm64/x86_64, deployment target 17, SDK 26.5, same Xcode/host as baseline. Existing AppIntents no-dependency and always-run media-validation script warnings remain. Logs: `.build/S1-candidate-smoke.log` and `.build/S1-candidate-build.log`. Installed fresh version 1.0 **build 7** over the existing dedicated QA app without deletion/reset. No further build ran during Services' compiler window.
+
+Only Joe-TV Team QA (`C95B257D-0111-40A1-9D02-2AD70D850FF8`) was operated. All seven simulators were Shutdown before this candidate session; Joe-TV was terminated and QA shut down at completion, with all seven again confirmed Shutdown. Retained dedicated app data; no cold-cache claim. No authenticated media or provider probes.
+
+### Fixture and evidence boundaries
+
+- Navigation fixture: `JOE_TV_DEBUG_NAVIGATION=1`; destination `guide` / `sports` when needed and `JOE_TV_DEBUG_EMPTY_FAVORITES=1` for empty Home, passed through `SIMCTL_CHILD_` launch variables. Twelve enabled channels, first eight favorites, four EPG programs per channel (expired/current/future/later), eight live baseball games with Home/Away choices. Channel 01 lacks synopsis; channel 12 has long text. Dates use actual launch time; the clock is not frozen. Default current-program duration was used; boundary crossing was not tested.
+- Navigation fixture uses a reset-on-launch separate defaults suite, ready empty AVPlayer sessions and no artwork URLs. Source inspection supports provider isolation; this was not a packet-capture/network audit. A hash-only comparison of the ordinary dedicated-app preference plist before and after navigation scenarios was byte-identical (`cmp` exit 0; `.build/S1-normal-preferences-before.sha256` and `after.sha256`). This comparison ended **before** the older Fantasy fixture, which uses ordinary dedicated-app preferences; it makes no isolation claim for that later fixture.
+- Fantasy used only `JOE_TV_DEBUG_FANTASY_ZONE=1`: four NFL games, RedZone/NFL Network, sample matchup, empty player, possible public ESPN artwork. These fixtures prove UI state transitions, not decoding, streaming or real feed selection.
+- Keyboard input and visual verification as in baseline. Immediate post-key screenshots sometimes precede settled UI; subsequent captures resolved state. Tool execution duration is not input latency. Reported narrow activation counts begin at a verified focused origin; no whole-journey speedup or remote gesture equivalence is claimed.
+
+### Observed candidate matrix
+
+| Case | Result and observed behavior | Limits |
+| --- | --- | --- |
+| Home focus, watch, return | **PASS.** Right from favorite 01 focused 02 and updated its hero without full-screen tuning. One Select entered player; one Back from hidden controls restored **favorite 02 card focus**, fixing the baseline top-navigation return. Repeated watch/return also restored 02. | No media-startup measurement. |
+| Quick Switch preserves original browse origin | **PASS.** From Home 02 playback, Down opened rail with 01 first and active 02 omitted. Selecting 01 visibly changed badge/title to channel 01 / Current Program 1. Back through controls and hidden layer returned to **original Home 02**, despite the replacement stream. | One earlier rail attempt auto-hid before Select and is excluded. No exhaustive deduplication rerun. |
+| Removed Home origin | **PASS.** Unfavoriting playing 02 through the player removed its card. Back focused **03**, the valid next card at the former index. | Fixture has no asynchronous removal of guide programs or sports events. |
+| Explicit player Guide | **PASS.** From Home 03 player, selecting Guide opened **Live TV**, with All filter focus, instead of restoring Home. | Initial guide selection was channel 01; playing-channel alignment is not claimed. |
+| Empty Home and Channels return | **PASS.** Choose Favorites opened existing Channels. Cancel with no change restored CTA focus. Adding 01 and leaving focused the new first Home card. Opening Channels through More and disabling 01 retained its favorite star (11 enabled / 1 favorite); leaving ordinary settings restored More focus. Reopening from empty Home retained the disabled favorite; Done restored CTA without silently enabling it. | In-launch setting persistence verified; fixture deliberately resets its separate suite each launch. Existing sheet clipping recorded below. |
+| Current program / channel-name / details-watch guide playback | **FAIL — S1-QA-C1.** Three entry paths reached full-screen fixture playback but then controls could not be recovered with Up and a reliable return was unavailable. Current-program path reproduced from an existing session and fresh guide launch; fresh channel-name and future-details Watch paths showed channel 02's initial badge/current title before later input failed. | Do not interpret black empty-player video as a media failure or absence of initial player rendering. See reproduction below. |
+| Future / expired program details | **PASS for details.** Future 01 showed scheduled date/time and Watch channel now explanation, with no invented synopsis. Close returned focus to Future Program 1 in the same viewport. Scrolling to future 12 and opening showed long title and synopsis truncated inside the sheet, with both actions and explanatory copy visible. Expired 12 showed its past date/time and the same truthful live-channel CTA, without implying replay. | Future Watch activation is covered by the blocker; expired Watch was not repeated. Two successful guide playback origins and clock-boundary behavior remain pending. |
+| Baseball selector and return | **PASS.** From Sports Live (8), Game 2 Select opened Home 2 / Away 2 choices. Cancel restored Game 2 focus/metadata. Reopen and select Home 2 entered a player titled Fixture Game 2; Up exposed controls. Back through controls then hidden returned to **Game 2** in the same Live grid. | One game and one chosen feed; no actual video, National feed, filter-persistence or event-mutation coverage. |
+| Focused Fantasy scorebug Back | **PASS.** Hidden player → Up Pause → Up scorebug → Back hid controls and retained player/scorebug, observed before the 10-second auto-hide. This addresses the baseline ignored-Back case. | Sanitized screenshot captures resulting hidden state; preceding focus/action is documented by UI observations. |
+| Fantasy drawer and spaced Back layers | **PASS, staged fresh sequence.** RedZone → player → focused scorebug → Matchup. One Back closed drawer and visibly restored focused scorebug with controls. Next Back hid controls. Next Back returned to Fantasy board with **NFL RedZone card focused**, fixing baseline top-Home focus. | Earlier batched exploration ended at system Home unexpectedly; timing/transition ambiguity prevents attributing it to a guard defect. Fresh separated sequence passed. Sub-450 ms duplicate delivery and rapid-repeat guard remain **unverified**, not passed. |
+
+### S1-QA-C1 — guide-origin player loses usable input (acceptance blocker)
+
+Reproduce on original candidate with navigation fixture destination `guide`: focus Current Program 2, Select, allow initial player badge to clear, then press Up. Expected: player controls become usable; Back unwinds to the captured guide origin. Observed: full-screen empty-player surface persists, Up does not reveal controls, and spaced Back does not reliably restore the guide. Reproduced after an earlier Home → explicit Guide sequence and in a fresh guide launch. In one attempt Back eventually reached system Home while the Joe-TV process remained alive; this is not evidence of an app crash.
+
+PM requested comparisons, completed using fresh launches: (1) focus channel 02's channel-name cell with `LIVE PREVIEW · MUTED` visible, Select; (2) open Future Program 2 details, then select Watch channel now. **Both initially showed channel 02's badge and Current Program 2 title**, then Up failed to recover controls after the badge cleared. Thus the failure is shared across tested guide handoffs, not isolated to the direct current-program shortcut. Home and baseball entry controls were usable in independent tests.
+
+Runtime log inspection found repeated SwiftUI “Publishing changes from within view updates” faults and render-pipeline compilation messages while the process was alive. Causality is unestablished; these logs are not a measured latency result. PM/App's suspected native muted-preview focus ownership is a **hypothesis**. App correction commit `9132f930897fd162df9e7572b3118953e9934821` was reported by PM but **was not built or tested in this checkpoint**. Wait for PM's exact corrected integrated SHA and explicit compiler release before targeted A/B verification; do not treat that correction as accepted from source description alone.
+
+### Layout observation and verified artifacts
+
+The existing Channels sheet clips its surfing row text/subtitle, truncates channel names to indistinguishable “Fixture Channel…” labels, and wraps Clear Favorites across three lines at this simulator size. Controls used above remained reachable. Sent to PM for subsequent polish; this is **not established as an S1 regression** because the same sheet was not compared on baseline. Program details, in contrast, retained readable actions/support text with long fixture content.
+
+All five local PNGs below were reopened and visually verified after capture. They are sanitized fixture UI, uncommitted; screenshot state alone does not prove the input sequence.
+
+- `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-candidate-evidence/fixture-guide-select-black.png` — empty black player after guide activation/badge timeout. Supports state only; the failed Up/Back observations above establish the blocker.
+- `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-candidate-evidence/fixture-empty-home-return.png` — empty Favorites and focused Choose Favorites after cancel.
+- `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-candidate-evidence/fixture-settings-disabled-favorite.png` — disabled first channel retains favorite; 11 enabled / 1 favorite, plus sheet clipping.
+- `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-candidate-evidence/fixture-long-future-details.png` — future channel 12, two-line truncated title/three-line synopsis, visible CTA/Close/explanation.
+- `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-candidate-evidence/fixture-scorebug-after-back.png` — controls hidden after observed focused-scorebug Back, scorebug/player retained.
+
+### Remaining acceptance and handoff
+
+Original candidate is **not accepted**, despite fresh build/smoke and independent passes above. Next bounded check: exact corrected candidate fresh build/smoke, then the three failed guide entry paths, successful restoration from two guide origins, and remaining guide timing/filter cases supported by the fixture. Preserve independent passing evidence rather than broadly rerunning it without a change-related reason. Rapid duplicate Back, removed guide/Sports origins, delayed-data behavior and broad filter persistence are not established by this checkpoint. Baseline Instruments attachment limitation remains; no retry or performance gain claimed.
+
+Physical Siri Remote, VoiceOver/Reduce Motion, real media startup/audio/captions, FairPlay, couch readability and device performance remain pending suitable hardware/media. No deployment or release was performed or authorized. QA has stopped the app and shut down its simulator; PM retains coordination of the next exclusive runtime/compiler window.
