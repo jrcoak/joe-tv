@@ -196,6 +196,7 @@ struct MediaItem: Identifiable {
 }
 
 enum SportsEventPhase: Equatable {
+    case unknown
     case live
     case upcoming
     case replay
@@ -226,19 +227,16 @@ extension MediaItem {
         if Self.containsCompletionSignal(statusText) {
             return isPlayable ? .replay : .completed
         }
-        if statusText.contains("replay") {
+        if Self.hasStatusSignal(#"\breplay\b"#, in: statusText) {
             return .replay
         }
-        if Self.containsLiveSignal(statusText) {
-            return .live
-        }
-        if Self.containsUpcomingSignal(statusText) {
-            return .upcoming
+        if Self.containsUncertainSignal(statusText) { return .unknown }
+        // Transport availability and generic status copy do not establish timing.
+        guard let event = sportsEvent, event.startsAt.timeIntervalSince1970.isFinite,
+              event.endsAt.map({ $0.timeIntervalSince1970.isFinite && $0 > event.startsAt }) ?? true else {
+            return .unknown
         }
 
-        guard let event = sportsEvent else {
-            return isPlayable ? .live : .upcoming
-        }
         if event.startsAt > date {
             return .upcoming
         }
@@ -263,19 +261,19 @@ extension MediaItem {
     }
 
     private static func containsCompletionSignal(_ value: String) -> Bool {
-        ["final", "complete", "ended", "full time", "post-game", "postgame"]
-            .contains(where: value.contains)
+        // Word boundaries keep tournament labels such as quarterfinal from
+        // being interpreted as a completed match.
+        hasStatusSignal(#"\b(?:final(?!\s+(?:round|four)\b)|complete|completed|ended|full[ -]time|post[ -]?game)\b"#, in: value)
     }
 
-    private static func containsLiveSignal(_ value: String) -> Bool {
-        ["live", "progress", "in progress", "halftime", "period", "quarter"]
-            .contains(where: value.contains)
+    private static func containsUncertainSignal(_ value: String) -> Bool {
+        hasStatusSignal(#"\b(?:unknown|tbd|delayed|postponed|cancelled|canceled|suspended|abandoned)\b"#, in: value)
     }
 
-    private static func containsUpcomingSignal(_ value: String) -> Bool {
-        ["scheduled", "upcoming", "starts at", "game time", "coverage begins"]
-            .contains(where: value.contains)
+    private static func hasStatusSignal(_ pattern: String, in value: String) -> Bool {
+        value.range(of: pattern, options: .regularExpression) != nil
     }
+
 }
 
 enum SportsCategoryClassifier {
@@ -401,7 +399,8 @@ enum SportsCategoryClassifier {
             "mecum auctions", "sportscenter", "first take", "around the horn", "daily wager",
             "college football countdown", "college gameday", "monday night countdown",
             "sunday nfl countdown", "fantasy football now", "nfl live", "the huddle",
-            "the insiders", "read react", "baseball tonight", "nba today", "nhl tonight"
+            "the insiders", "read react", "baseball tonight", "nba today", "nhl tonight",
+            "good morning football", "sec in 60", "sec in60"
         ].contains(where: value.contains)
     }
 }

@@ -655,6 +655,8 @@ enum ParserSmoke {
             fatalError("ESPN studio shows must be excluded without hiding actual games")
         }
 
+        sportsPhaseAcceptance()
+
         let espnPlusLivePlaybackID = try! JSONSerialization.data(withJSONObject: [
             "channelId": "espn-unlimited-court-7",
             "mediaId": "live-media-7",
@@ -695,11 +697,11 @@ enum ParserSmoke {
               espnPlusItems[0].id == "espnplus|live-media-7",
               espnPlusItems[0].title == "US Open Court 7",
               espnPlusItems[0].categoryID == "tennis",
-              espnPlusItems[0].subtitle == "US Open · ESPN Unlimited · Live",
+              espnPlusItems[0].subtitle == "US Open · ESPN Unlimited",
               espnPlusItems[0].imageURL?.path == "/us-open-live.jpg",
-              espnPlusItems[0].sportsPhase(at: Date()) == .live,
+              espnPlusItems[0].sportsPhase(at: Date(timeIntervalSince1970: 1_789_658_100)) == .unknown,
               espnPlusItems[1].id == "espnplus|replay-media-2",
-              espnPlusItems[1].sportsPhase(at: Date()) == .replay,
+              espnPlusItems[1].sportsPhase(at: Date(timeIntervalSince1970: 1_789_658_100)) == .replay,
               case .drmPage(let espnPlusPage) = espnPlusItems[0].playback,
               espnPlusPage.path == "/PlayerDRMEP/Watch",
               URLComponents(url: espnPlusPage, resolvingAgainstBaseURL: false)?
@@ -1578,6 +1580,106 @@ enum ParserSmoke {
 
         print("Parser smoke test passed")
     }
+    private static func sportsPhaseAcceptance() {
+        let clock = ISO8601DateFormatter().date(from: "2026-09-17T15:15:00Z")!
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) {
+            if !condition() { fatalError(message) }
+        }
+        func item(start: Date? = nil, end: Date? = nil, status: String? = nil,
+                  subtitle: String? = nil, playable: Bool = true) -> MediaItem {
+            let event = start.map {
+                SportsScheduleEvent(eventID: "phase-fixture", title: "Away at Home", sport: "Baseball", leagueID: "mlb", league: "MLB",
+                    startsAt: $0, endsAt: end, status: status, venue: nil, country: nil,
+                    homeTeamID: nil, homeTeam: nil, homeTeamLogoURL: nil, awayTeamID: nil, awayTeam: nil, awayTeamLogoURL: nil,
+                    homeScore: nil, awayScore: nil, thumbnailURL: nil, sourceDate: nil, sourceTime: nil, broadcasts: [])
+            }
+            return MediaItem(id: "phase-fixture", title: "Away at Home", subtitle: subtitle, imageURL: nil, categoryID: "mlb",
+                             playback: playable ? .hls(URL(string: "https://media.invalid/fixture.m3u8")!) : .unavailable,
+                             sportsEvent: event, providerEventDateCode: "20260917")
+        }
+        for playable in [true, false] {
+            for text: String? in [nil, "Live", "Scheduled", "Sep 17, 2026 at 11:35 AM ET", "1st quarter"] {
+                let unknown = item(subtitle: text, playable: playable)
+                check(unknown.sportsPhase(at: clock) == .unknown, "Missing event timing must be unknown even with a feed/datecode/status")
+                for scope in SportsGuideScope.allCases {
+                    check(SportsEventGuidePolicy.filteredItems([unknown], scope: scope, selectedCategoryIDs: ["mlb"], at: clock).isEmpty,
+                          "Unknown timing inflated Live/Upcoming")
+                }
+            }
+        }
+        let future = clock.addingTimeInterval(1_200)
+        let upcoming = item(start: future, status: "Live", subtitle: "Live coverage")
+        check(upcoming.sportsPhase(at: clock) == .upcoming, "Generic Live overrode future start")
+        check(!upcoming.sportsPlaybackAvailable(at: future.addingTimeInterval(-901)), "Coverage unlocked before 15 minutes")
+        check(upcoming.sportsPlaybackAvailable(at: future.addingTimeInterval(-900)), "Coverage did not unlock at 15 minutes")
+        check(upcoming.sportsPhase(at: future.addingTimeInterval(-900)) == .upcoming, "Pregame availability became live phase")
+        check(upcoming.sportsPhase(at: future) == .live && upcoming.sportsPlaybackAvailable(at: future), "Start boundary did not advance")
+        for status in ["Live", "Upcoming", "Scheduled", "In Progress", "Live · 3rd · 7:42", "Halftime"] {
+            let ended = item(start: clock.addingTimeInterval(-7_200), end: clock, status: status)
+            check(ended.sportsPhase(at: clock) == .replay, "Generic/stale status defeated known end")
+            let bounded = item(start: clock.addingTimeInterval(-18_000), status: status)
+            check(bounded.sportsPhase(at: clock) == .replay, "No-end inference exceeded five hours")
+            check(bounded.sportsPhase(at: clock.addingTimeInterval(-1)) == .live, "Existing bounded no-end inference changed")
+        }
+        for status in ["In Progress", "Live · 3rd · 7:42", "Halftime", "2nd period", "1st quarter", "Quarterfinal", "Final Round"] {
+            check(item(start: clock.addingTimeInterval(-600), end: clock.addingTimeInterval(600), status: status).sportsPhase(at: clock) == .live,
+                  "Supported in-window status or tournament name misclassified")
+        }
+        check(item(start: clock, end: clock.addingTimeInterval(-1)).sportsPhase(at: clock) == .unknown, "Invalid time range implied live")
+        for status in ["Unknown", "TBD", "Delayed", "Postponed", "Canceled", "Cancelled", "Suspended", "Abandoned"] {
+            check(item(start: clock.addingTimeInterval(-600), status: status, subtitle: "Live").sportsPhase(at: clock) == .unknown,
+                  "Disrupted status falsely implied play underway")
+        }
+        for status in ["Final", "Final/OT", "Completed", "Ended", "Full Time", "Post-game"] {
+            check(item(start: future, status: status, subtitle: "Live").sportsPhase(at: clock) == .replay, "Explicit completion lost precedence")
+            check(item(start: future, status: status, playable: false).sportsPhase(at: clock) == .completed, "Unplayable completed event changed")
+        }
+        check(item(start: future, subtitle: "Replay").sportsPhase(at: clock) == .replay, "Replay exclusion changed")
+        check(item(subtitle: "Quarterfinal").sportsPhase(at: clock) == .unknown, "Quarterfinal falsely treated as final")
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let playbackID = try! JSONSerialization.data(withJSONObject: ["mediaId": "phase-media", "contentType": "live"]).base64EncodedString()
+        func airing(_ extra: [String: Any]) -> MediaItem {
+            var row: [String: Any] = ["name": "Away at Home", "type": "LIVE", "sport": "Baseball", "league": "MLB",
+                                      "source": ["playbackId": playbackID]]
+            row.merge(extra) { _, new in new }
+            let data = try! JSONSerialization.data(withJSONObject: ["airings": [row]])
+            let parsed = HTMLCatalogParser.parseESPNPlusEvents(data, baseURL: URL(string: "https://provider.invalid")!, requestedDate: clock, calendar: calendar)
+            check(parsed.count == 1, "Phase fixture airing disappeared")
+            return parsed[0]
+        }
+        for fields: [String: Any] in [[:], ["startsAt": "bad-date"], ["startsAt": "Sep 17, 2026 at 11:35 AM ET"], ["status": "Live"]] {
+            let value = airing(fields)
+            check(value.sportsPhase(at: clock) == .unknown && value.sportsEvent == nil, "Missing/invalid ESPN+ timing became Live")
+        }
+        let timed = airing(["startsAt": "2026-09-17T15:35:00.000Z", "endsAt": "2026-09-17T16:35:00.000Z"])
+        check(timed.sportsEvent?.startsAt == future && timed.sportsEvent?.status == nil, "Fractional date or neutral phase evidence incorrect")
+        check(timed.sportsPhase(at: clock) == .upcoming && timed.sportsPhase(at: future) == .live &&
+              timed.sportsPhase(at: future.addingTimeInterval(3_600)) == .replay, "Parsed phase froze across start/end boundaries")
+        check(timed.id == "espnplus|phase-media" && timed.providerEventDateCode == "20260917" && timed.isPlayable, "ESPN+ identity/date/feed changed")
+        let sameInstant = airing(["startsAt": "2026-09-17T11:35:00-04:00", "status": "Upcoming"])
+        check(sameInstant.sportsEvent?.startsAt == future && sameInstant.sportsPhase(at: future) == .live, "Offset time or stale Upcoming did not advance")
+        let timeOnly = airing(["startTime": "11:35 AM"])
+        check(timeOnly.sportsEvent?.startsAt == future, "Explicit provider time-only/calendar contract changed")
+        let tomorrow = airing(["startsAt": "2026-09-18T15:35:00Z", "status": "Live"])
+        check(tomorrow.sportsPhase(at: clock) == .upcoming, "Tomorrow plus generic Live became live")
+        let stale = airing(["startsAt": "2026-09-16T15:35:00Z", "status": "In Progress"])
+        check(stale.sportsPhase(at: clock) == .replay, "Old in-progress publication remained live without bounds")
+        check(airing(["type": "REPLAY"]).sportsPhase(at: clock) == .replay, "ESPN+ replay transport evidence lost")
+        check(airing(["startsAt": "2026-09-17T15:00:00Z", "status": "Delayed"]).sportsPhase(at: clock) == .unknown, "Published disrupted airing status lost")
+        let scheduleSide = item(start: future, status: "Scheduled")
+        let consolidated = SportsEventGuidePolicy.consolidatedItems(
+            categories: [CatalogCategory(id: "mlb", title: "Baseball", symbol: "baseball", items: [scheduleSide])],
+            espnPlusItems: [airing(["startsAt": "2026-09-17T15:35:00Z", "status": "Live"])])
+        check(consolidated.count == 1 && consolidated[0].sportsPhase(at: clock) == .upcoming, "Consolidation revived generic Live")
+        for title in ["Good Morning Football", "SEC In 60", "SEC In60: Football"] {
+            let studio = MediaItem(id: title, title: title, subtitle: "Live", imageURL: nil, categoryID: "football", playback: .unavailable)
+            check(SportsCategoryClassifier.categoryID(for: studio) == nil, "Observed studio listing still included")
+        }
+        check(SportsCategoryClassifier.categoryID(title: "Away at Home", upstreamCategory: "NFL") == "nfl", "Studio exclusion affected genuine games")
+    }
+
     private static func xmltvAcceptance() {
         let start = ISO8601DateFormatter().date(from: "2026-09-17T00:00:00Z")!
         let end = start.addingTimeInterval(7_200)

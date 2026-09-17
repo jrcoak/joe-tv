@@ -258,15 +258,10 @@ enum HTMLCatalogParser {
                 calendar: calendar
             )
             let providerDay = startsAt ?? requestedDate
-            let phaseLabel: String = {
-                if isReplay { return "Replay" }
-                if let startsAt, startsAt > Date() { return "Upcoming" }
-                if let requestedDate,
-                   calendar.startOfDay(for: requestedDate) > calendar.startOfDay(for: Date()) {
-                    return "Upcoming"
-                }
-                return "Live"
-            }()
+            // Keep published evidence, not a phase frozen at parsing time. The
+            // live transport type alone cannot establish an in-progress event.
+            let publishedStatus = dynamicString(in: game, keys: ["status", "statustext"])
+            let phaseEvidence = isReplay ? "Replay" : publishedStatus
 
             var components = URLComponents(url: baseURL.appending(path: "/PlayerDRMEP/Watch"), resolvingAgainstBaseURL: true)
             components?.queryItems = [URLQueryItem(name: "id", value: playbackID)]
@@ -274,7 +269,8 @@ enum HTMLCatalogParser {
 
             let stableID = metadata.mediaID ?? metadata.sourceID ?? playbackID
             guard seen.insert(stableID).inserted else { return nil }
-            let subtitle = [competition, network, phaseLabel]
+            let subtitle = [competition, network, phaseEvidence]
+                .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: " · ")
             let sportsEvent = startsAt.map { start in
@@ -286,7 +282,7 @@ enum HTMLCatalogParser {
                     league: competition,
                     startsAt: start,
                     endsAt: endsAt,
-                    status: phaseLabel,
+                    status: phaseEvidence,
                     venue: nil,
                     country: "United States",
                     homeTeamID: nil,
@@ -1140,7 +1136,9 @@ enum HTMLCatalogParser {
         if let milliseconds = firstCapture(in: string, pattern: #"/Date\((-?\d+)"#).flatMap(Double.init) {
             return Date(timeIntervalSince1970: milliseconds / 1_000)
         }
-        return ISO8601DateFormatter().date(from: string)
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: string) ?? ISO8601DateFormatter().date(from: string)
     }
 
     private static func dynamicDRMIdentifier(in value: Any) -> String? {
