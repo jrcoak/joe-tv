@@ -2,11 +2,12 @@
 
 ## Scope and evidence rules
 
-- Assignment: **R1-LIVE**, research only, for Joe-TV at `c54738daab34c0cfb25bec9c0ee0c82f04e375a5` on `codex/joe-tv-playback`.
+- Assignment: **R1-LIVE**, research only, governed by spec **TEAM-3**, acknowledged from PM commit `1404c9d` (`spec.md` and `docs/assignments/R1.md`).
+- App baseline: `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8`; research branch `codex/joe-tv-playback` began this assignment at prior M0 report commit `c54738daab34c0cfb25bec9c0ee0c82f04e375a5`. The unchanged M0 report remains evidence rather than being revised by TEAM-3.
 - Research date: **September 16, 2026**. All web sources below were accessed on that date.
 - Products: YouTube TV, Hulu + Live TV, and Fubo. Official help sources were prioritized. No subscriptions, logins, apps, streams, installs, simulators, or hands-on competitor tests were used.
 - “Documented” means the vendor says a feature exists in the stated scope. It does not prove usability, responsiveness, universal rollout, current availability for every account, or Apple TV parity.
-- “Joe-TV observed” means inspected source at the commit above. “Hypothesis” and “inference” require QA or user validation. Recommendations are future-sprint plans; this assignment changes no application code.
+- “Joe-TV observed” means inspected source at the app baseline above. “Hypothesis” and “inference” require QA or user validation. Every recommendation is a future-sprint plan; TEAM-3 does not authorize implementation, and this assignment changes no application code.
 
 The comparison is intentionally selective. Joe-TV should not accumulate features simply because a larger service has them. The useful question is whether a pattern shortens Joe's path to live TV and sports while preserving Joe-TV's fast, focused character.
 
