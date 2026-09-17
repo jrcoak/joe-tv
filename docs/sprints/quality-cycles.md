@@ -1,6 +1,6 @@
 # Joe-TV quality cycles
 
-Status: three implementation cycles are assembled on local `codex/joe-tv-team`. Current combined application candidate: `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d`, version 1.0 / build 7. Fresh independent S3 guide-merge, full parser smoke and unsigned tvOS Debug build checks passed. S2 provider lifecycle checks passed at its earlier exact candidate; provider/test source is unchanged. Final UI acceptance is **blocked by unavailable computer-control access**. The September 17 inventory succeeded but Simulator selection timed out twice; current lock state is unestablished (`S2-ui-qa.md`). No release or production deployment has been performed.
+Status: three implementation cycles are assembled on local `codex/joe-tv-team`. Current combined application candidate: `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d`, version 1.0 / build 7. Fresh independent S3 guide-merge, full parser smoke and unsigned tvOS Debug build checks passed. S2 provider lifecycle checks passed at its earlier exact candidate; provider/test source is unchanged. Full UI acceptance remains **pending**. Simulator access later recovered during Joe’s explicit opening request: QA installed and launched the latest S3 app after one graceful device restart, visually verified normal sign-in and one responsive focus move, and left it open for Joe. Earlier timeouts in `S2-ui-qa.md` are historical. No release or production deployment has been performed.
 
 ## Implemented
 
@@ -16,7 +16,7 @@ Provider benchmark on a fixed synthetic 70-station / 3,360-program guide: five f
 
 Joe has dropped new-channel work entirely (TEAM-025), including WBZ. The [earlier research](../research/public-stream-shortlist.md) is historical only. Existing app quality and verification remain the focus.
 
-## Resume when UI access is available
+## Remaining acceptance after Joe’s simulator session
 
 QA preserved source-specific unsigned artifacts in its worktree:
 
@@ -24,7 +24,7 @@ QA preserved source-specific unsigned artifacts in its worktree:
 2. `S2-combined-artifact/Joe-TV.app`, source `bbb60d6effc7536e27b931899c8915d38e6449c2` (full evidence in `S2-qa.md`): compare Channels with the saved clipping screenshot, verify state text, long names, footer/focus bounds and empty-Home cancel/add/disabled-favorite return; repeat a guide regression sample. Design reviews the final screenshot.
 3. `S3-combined-artifact/Joe-TV.app`, source `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d`: repeat affected browsing/selection/metadata regressions after the source-specific S1/S2 comparison. Actual provider failure/recovery and async ordering require isolated controllable-provider evidence; the existing navigation fixture cannot establish those paths. See `S3-qa.md` for exact artifact hash and limits.
 
-All live under `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/`. PM grants the dedicated Joe-TV Team QA simulator `C95B257D-0111-40A1-9D02-2AD70D850FF8` for this resumption. Do not infer unlock or permission from elapsed time, bypass the host lock, or operate other devices. No further compilation is needed unless source or artifacts change. Any runtime defect goes to its code owner, receives a new candidate, and gets affected verification before acceptance.
+All live under `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/`. The dedicated Joe-TV Team QA simulator `C95B257D-0111-40A1-9D02-2AD70D850FF8` is now open under Joe’s control. PM must coordinate a new runtime handoff before QA resumes this sequence. Do not infer unlock or permission from elapsed time, bypass the host lock, or operate other devices. No further compilation is needed unless source or artifacts change. Any runtime defect goes to its code owner, receives a new candidate, and gets affected verification before acceptance.
 
 Rapid duplicate Back, physical Siri Remote, real media/captions/FairPlay and couch readability retain their explicit evidence limits. The original main checkout remains at `138c271` with only unrelated SHELF untracked. Repository decisions/reports and the existing seven tasks retain the team context; no recurring automation was installed.
 
@@ -32,4 +32,4 @@ Rapid duplicate Back, physical Siri Remote, real media/captions/FairPlay and cou
 
 S3 source and App/SecOps reviews are integrated; independent QA report `5ba967367f25a938c42aef061f23f270c3c8819f` records all three fresh checks passing at `9d3cd8a`. S1/S2 artifact hashes were reverified unchanged. All specialist runs and compilation are complete; no active runtime session or unattended work is installed.
 
-Next: restore supported Simulator access, finish the pending guide-controls correction and Channels visual acceptance, route any observed defect to its owner, then verify the final combined app. Joe has been asked to open Simulator and confirm it is visible; no reply has yet been received. Do not infer UI availability from elapsed time or an open browser. Further layout changes should follow this acceptance checkpoint. New-channel work is closed; sidebar/team-curated Home remain later product directions.
+Next: after Joe’s simulator session and a coordinated runtime handoff, finish the pending guide-controls correction and Channels visual acceptance, route any observed defect to its owner, then verify the final combined app. The latest normal-mode app is open at sign-in and responded to one focus movement; this is launch evidence, not acceptance of those remaining journeys. Further layout changes should follow that checkpoint. New-channel work is closed; sidebar/team-curated Home remain later product directions.

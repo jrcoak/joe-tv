@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1/S2 offline QA passed; UI access times out; S3 guide merge also passed independent offline QA.** M0/R1 setup and research complete. See docs/assignments/S3.md for active source ownership.
+Status: **S1–S3 implemented and offline QA passed. Latest app is open in Simulator for Joe; full UI acceptance remains pending.**
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -65,3 +65,9 @@ Services source `88061c7fbf8a4e41e90ed4e3d10b1dbd7b25272e` and report `f3aa27c33
 ## Final September 17 offline checkpoint
 
 QA report `5ba967367f25a938c42aef061f23f270c3c8819f` is integrated. Candidate `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d` freshly passed guide merge, full parser smoke and unsigned build; S3 source equality with reviewed `88061c7` was independently verified. Saved S3 app: `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S3-combined-artifact/Joe-TV.app`. Prior S1/S2 artifact hashes remain unchanged. All specialists are idle and compilation/runtime ownership is released. Original main checkout was freshly verified at `138c271` with only unrelated SHELF untracked. Final visual/async acceptance remains pending; see `sprints/quality-cycles.md`.
+
+## Simulator handed to Joe
+
+Joe explicitly requested the latest app opened in Xcode Simulator. QA verified the preserved S3 bundle, booted only `C95B257D-0111-40A1-9D02-2AD70D850FF8`, and opened Simulator. Initial install failed with IXErrorDomain code 3 before app launch. One graceful shutdown/reboot of the dedicated device resolved it; retry install and normal launch succeeded (PID 73294). CUA access now worked and QA visually verified the normal sign-in screen plus a Down focus move from email to Password. No credentials were entered, data reset, provider/media test or full UI acceptance was performed.
+
+**Simulator and Joe-TV are intentionally left open under Joe's control.** Other specialists must not operate, shut down, replace the app, reset data, or run fixtures there until PM coordinates a new handoff with Joe. Source is `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d`, version 1.0/build 7, from the preserved S3 artifact with unchanged verified hash. No agent runtime session remains active.
