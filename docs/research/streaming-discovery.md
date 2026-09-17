@@ -4,7 +4,7 @@
 
 ## Scope and evidence
 
-- Assignment: R1-DESIGN, research only; governing product direction TEAM-2 / TEAM-013, read at `25f0b74db3b0fae8cc29be49cb95d3a179f7b934`.
+- Assignment: R1-DESIGN, research only; **TEAM-3 accepted** after reading `spec.md` and `docs/assignments/R1.md` via `git show 1404c9d`. This records the existing research scope and preserves TEAM-2 / TEAM-013 product priorities previously read at `25f0b74db3b0fae8cc29be49cb95d3a179f7b934`. All improvements remain future-sprint proposals; existing M0 reports remain unchanged evidence.
 - Task: `01a0ad34-9969-7ce1-9a82-a53fe7b979e9`; branch: `codex/joe-tv-design`; worktree: `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV`.
 - Starting HEAD: `49b8912f4ef3d9fce58bbaa08b9dffa801ade6a7`. Earlier M0 report commits are preserved. Joe-TV source baseline remains `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8` plus bootstrap `314968dc10f0bd73451ed6b0876a7fc7ed5c5233`; no claim about later integrated app changes.
 - Research accessed **2026-09-17 UTC** (2026-09-16 evening in America/New_York). Dates below are publisher-displayed dates where available, not search-engine crawl dates.
@@ -108,7 +108,7 @@ All links below were researched on the access date above. Netflix pages were rea
 
 For PM's future-sprint plan: scope conclusions **1, 2's restoration work, and 6** as the first polish package; use **5** to diagnose responsiveness with measurements. Explore **2's left rail and 3's team Home** afterward. **4** prevents those explorations from becoming an unnecessary on-demand product. This report authorizes none of that implementation.
 
-Checks performed: clean branch/HEAD inspection; reread TEAM-2 and M0 addendum; re-inspected active source paths; official web research with dates/platform qualifications. All ten Markdown citation references resolve; six conclusions are present. Staged whitespace and path checks passed with only this report included. No build or runtime tests were run. Remaining unknowns include installed competitor app/version behavior, exact competitor press counts, Joe-TV frame timing, physical-remote focus restoration, couch readability and caption rendering. Availability, personalization and visual prominence are documented capabilities—not demonstrated advantages over Joe-TV.
+Checks performed: clean branch/HEAD inspection; reread TEAM-2 and M0 addendum; read governing TEAM-3 and R1 assignment; re-inspected active source paths; official web research with dates/platform qualifications. All ten Markdown citation references resolve; six conclusions are present. Staged whitespace and path checks passed with only this report included. No build or runtime tests were run. Remaining unknowns include installed competitor app/version behavior, exact competitor press counts, Joe-TV frame timing, physical-remote focus restoration, couch readability and caption rendering. Availability, personalization and visual prominence are documented capabilities—not demonstrated advantages over Joe-TV.
 
 [N1]: https://www.netflix.com/tudum/articles/netflix-new-tv-layout
 [N2]: https://help.netflix.com/en/node/2102
