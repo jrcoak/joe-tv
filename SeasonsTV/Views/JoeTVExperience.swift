@@ -1810,61 +1810,111 @@ private struct JoeTVSportsFilterView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        let eventCounts = counts
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Filter Sports")
                         .font(.system(size: 42, weight: .semibold))
-                    Text("Select any combination. Live and Upcoming use the same filters.")
-                        .font(.title3)
+                    Text("Choose sports for both Live and Upcoming.")
+                        .font(.system(size: 20))
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 650, alignment: .leading)
                 }
                 Spacer()
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(JoeTVSportsFilterButtonStyle(minimumWidth: 140, height: 64))
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())],
+                    spacing: 16
+                ) {
                     ForEach(SportsCategoryOption.all) { category in
                         let isEnabled = model.isSportsCategoryEnabled(category.id)
+                        let count = eventCounts[category.id, default: 0]
+                        let countText = count == 1 ? "1 event" : "\(count) events"
                         Button {
                             model.setSportsCategory(category.id, enabled: !isEnabled)
                         } label: {
-                            HStack(spacing: 16) {
+                            HStack(spacing: 12) {
                                 Image(systemName: category.symbol)
+                                    .font(.system(size: 24, weight: .semibold))
                                     .frame(width: 34)
-                                VStack(alignment: .leading, spacing: 3) {
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(category.title)
-                                        .font(.title3.weight(.medium))
-                                    Text("\(counts[category.id, default: 0]) events")
-                                        .font(.callout)
+                                        .font(.system(size: 24, weight: .medium))
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .frame(height: 58, alignment: .leading)
+                                    Text(countText)
+                                        .font(.system(size: 17))
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                Spacer()
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isEnabled ? SeasonTheme.accent : .secondary)
+                                    .font(.system(size: 24, weight: .medium))
+                                    .frame(width: 28)
                             }
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(JoeTVRowButtonStyle())
+                        .buttonStyle(JoeTVSportsFilterButtonStyle(height: 112))
+                        .accessibilityLabel("\(category.title), \(countText)")
                         .accessibilityValue(isEnabled ? "Included" : "Excluded")
                     }
                 }
+                // Leave room for focus scaling, outlines and glow at every edge.
+                .padding(12)
             }
+            .frame(maxHeight: .infinity)
 
-            HStack {
-                Text("ESPN+ categories are normalized into these sports automatically.")
-                    .font(.callout)
+            HStack(spacing: 16) {
+                Text("ESPN+ events are grouped by sport automatically.")
+                    .font(.system(size: 17))
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
                 Spacer()
                 Button("Select All") { model.restoreDefaultSportsCategories() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(JoeTVSportsFilterButtonStyle(minimumWidth: 180, height: 64))
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .padding(50)
         .frame(width: 1060, height: 790)
         .background(SeasonTheme.background)
+    }
+}
+
+private struct JoeTVSportsFilterButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var minimumWidth: CGFloat = 0
+    let height: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 20, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .frame(minWidth: minimumWidth)
+            .frame(height: height)
+            .background(isFocused ? Color.white : SeasonTheme.surface)
+            .foregroundStyle(isFocused ? Color.black : Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isFocused ? Color.white : SeasonTheme.keyline, lineWidth: isFocused ? 2 : 1)
+            }
+            .shadow(color: Color.white.opacity(isFocused ? 0.2 : 0), radius: 4)
+            .scaleEffect(isFocused && !reduceMotion ? 1.012 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isFocused)
     }
 }
 
