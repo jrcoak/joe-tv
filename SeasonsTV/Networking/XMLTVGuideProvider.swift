@@ -54,6 +54,8 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
     private let cacheURL: URL
     private let sportsCacheURL: URL
     private let cacheDirectory: URL
+    private let now: @Sendable () -> Date
+    private let writeCache: @Sendable (Data, URL) throws -> Void
     private var lastRefresh: Date?
     private var lastAttempt: Date?
     private var sportsLastRefresh: Date?
@@ -70,6 +72,8 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         // produces a Swift 6 sendability warning even though UserDefaults itself
         // provides synchronized access.
         let defaults = UserDefaults.standard
+        self.now = { Date() }
+        self.writeCache = { try $0.write(to: $1, options: .atomic) }
         self.session = session
         self.defaults = defaults
         do {
@@ -93,6 +97,34 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         self.sportsCacheURL = cacheDirectory.appending(path: "seasonstv-sports-schedule.json")
     }
 
+    // Fully supplied dependencies do not evaluate bundled configuration, standard
+    // preferences or the user's cache location. Resolve defaults inside the actor.
+    init(
+        configuration: MediaAPIConfiguration,
+        session: URLSession,
+        defaults makeDefaults: () -> UserDefaults,
+        cacheDirectory: URL,
+        now: @escaping @Sendable () -> Date,
+        writeCache: @escaping @Sendable (Data, URL) throws -> Void = {
+            try $0.write(to: $1, options: .atomic)
+        }
+    ) {
+        let defaults = makeDefaults()
+        self.session = session
+        self.defaults = defaults
+        self.configuration = configuration
+        self.configurationError = nil
+        self.cacheDirectory = cacheDirectory
+        self.cacheURL = cacheDirectory.appending(path: "seasonstv-guide.xmltv")
+        self.sportsCacheURL = cacheDirectory.appending(path: "seasonstv-sports-schedule.json")
+        self.now = now
+        self.writeCache = writeCache
+        self.lastRefresh = defaults.object(forKey: Self.lastRefreshKey) as? Date
+        self.lastAttempt = defaults.object(forKey: Self.lastAttemptKey) as? Date
+        self.sportsLastRefresh = defaults.object(forKey: Self.sportsLastRefreshKey) as? Date
+        self.sportsLastAttempt = defaults.object(forKey: Self.sportsLastAttemptKey) as? Date
+    }
+
     func loadGuide(
         for channels: [LiveChannel],
         from start: Date,
@@ -101,19 +133,15 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         let configuration = try requireConfiguration()
         let mappings = ChannelDirectory.explicitMappings(for: channels)
         let stationIDs = Set(mappings.map(\.stationID))
-        let data = try await currentGuideData(configuration: configuration)
-        let programs = try XMLTVParser.parse(
-            data: data,
-            from: start,
-            to: end,
-            allowedStationIDs: stationIDs
+        let programs = try await currentGuidePrograms(
+            configuration: configuration, from: start, to: end, stationIDs: stationIDs
         )
         return (
             EPGGuideWindow(
                 start: start,
                 end: end,
                 programsByStationID: programs,
-                fetchedAt: lastRefresh ?? Date()
+                fetchedAt: lastRefresh ?? .distantPast
             ),
             mappings
         )
@@ -121,14 +149,7 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
 
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot {
         let configuration = try requireConfiguration()
-        let data = try await currentSportsScheduleData(configuration: configuration)
-        do {
-            let snapshot = try SportsScheduleDecoder.decode(data)
-            recordSportsRefresh()
-            return snapshot
-        } catch {
-            throw EPGServiceError.invalidSportsSchedule
-        }
+        return try await currentSportsSchedule(configuration: configuration)
     }
 
     func loadSportsEventDetail(
@@ -199,19 +220,26 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         throw EPGServiceError.configuration(configurationError ?? .missingReadToken)
     }
 
-    private func currentGuideData(configuration: MediaAPIConfiguration) async throws -> Data {
-        let cachedData = try? Data(contentsOf: cacheURL)
+    private func currentGuidePrograms(
+        configuration: MediaAPIConfiguration, from start: Date, to end: Date,
+        stationIDs: Set<String>
+    ) async throws -> [String: [EPGProgram]] {
+        func validate(_ data: Data) throws -> [String: [EPGProgram]] {
+            try XMLTVParser.parse(data: data, from: start, to: end, allowedStationIDs: stationIDs)
+        }
+        // Read and validate before using cached bytes or sending their validator.
+        let cached = (try? Data(contentsOf: cacheURL)).flatMap { try? validate($0) }
         if let lastAttempt,
-           Date().timeIntervalSince(lastAttempt) < Self.minimumRefreshInterval {
-            guard let cachedData else { throw EPGServiceError.refreshThrottled }
-            return cachedData
+           now().timeIntervalSince(lastAttempt) < Self.minimumRefreshInterval {
+            guard let cached else { throw EPGServiceError.refreshThrottled }
+            return cached
         }
 
         var request = MediaAPIRequestBuilder.makeRequest(
             configuration: configuration,
             route: .guideXMLTV
         )
-        if let etag = defaults.string(forKey: Self.etagKey), !etag.isEmpty {
+        if cached != nil, let etag = defaults.string(forKey: Self.etagKey), !etag.isEmpty {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
         recordAttempt()
@@ -223,17 +251,20 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
             }
             switch httpResponse.statusCode {
             case 200:
-                guard !data.isEmpty else { throw EPGServiceError.invalidGuide }
-                try data.write(to: cacheURL, options: .atomic)
-                if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                let accepted = try validate(data)
+                try writeCache(data, cacheURL)
+                if let etag = httpResponse.value(forHTTPHeaderField: "ETag"),
+                   !etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     defaults.set(etag, forKey: Self.etagKey)
+                } else {
+                    defaults.removeObject(forKey: Self.etagKey)
                 }
                 recordRefresh()
-                return data
+                return accepted
             case 304:
-                guard let cachedData else { throw EPGServiceError.invalidGuide }
+                guard let cached else { throw EPGServiceError.invalidGuide }
                 recordRefresh()
-                return cachedData
+                return cached
             case 401:
                 throw EPGServiceError.authorizationInvalid
             case 404:
@@ -245,24 +276,29 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
             }
         } catch {
             if error is EPGServiceError { throw error }
-            if let cachedData { return cachedData }
+            if let cached { return cached }
             throw error
         }
     }
 
-    private func currentSportsScheduleData(configuration: MediaAPIConfiguration) async throws -> Data {
-        let cachedData = try? Data(contentsOf: sportsCacheURL)
+    private func currentSportsSchedule(configuration: MediaAPIConfiguration) async throws -> SportsScheduleSnapshot {
+        func validate(_ data: Data) throws -> SportsScheduleSnapshot {
+            do { return try SportsScheduleDecoder.decode(data) }
+            catch { throw EPGServiceError.invalidSportsSchedule }
+        }
+        // Read and validate before using cached bytes or sending their validator.
+        let cached = (try? Data(contentsOf: sportsCacheURL)).flatMap { try? validate($0) }
         if let sportsLastAttempt,
-           Date().timeIntervalSince(sportsLastAttempt) < Self.minimumRefreshInterval {
-            guard let cachedData else { throw EPGServiceError.refreshThrottled }
-            return cachedData
+           now().timeIntervalSince(sportsLastAttempt) < Self.minimumRefreshInterval {
+            guard let cached else { throw EPGServiceError.refreshThrottled }
+            return cached
         }
 
         var request = MediaAPIRequestBuilder.makeRequest(
             configuration: configuration,
             route: .sportsSchedule
         )
-        if let etag = defaults.string(forKey: Self.sportsETagKey), !etag.isEmpty {
+        if cached != nil, let etag = defaults.string(forKey: Self.sportsETagKey), !etag.isEmpty {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
         recordSportsAttempt()
@@ -274,15 +310,20 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
             }
             switch httpResponse.statusCode {
             case 200:
-                guard !data.isEmpty else { throw EPGServiceError.invalidSportsSchedule }
-                try data.write(to: sportsCacheURL, options: .atomic)
-                if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                let accepted = try validate(data)
+                try writeCache(data, sportsCacheURL)
+                if let etag = httpResponse.value(forHTTPHeaderField: "ETag"),
+                   !etag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     defaults.set(etag, forKey: Self.sportsETagKey)
+                } else {
+                    defaults.removeObject(forKey: Self.sportsETagKey)
                 }
-                return data
+                recordSportsRefresh()
+                return accepted
             case 304:
-                guard let cachedData else { throw EPGServiceError.invalidSportsSchedule }
-                return cachedData
+                guard let cached else { throw EPGServiceError.invalidSportsSchedule }
+                recordSportsRefresh()
+                return cached
             case 401:
                 throw EPGServiceError.authorizationInvalid
             case 404:
@@ -294,31 +335,31 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
             }
         } catch {
             if error is EPGServiceError { throw error }
-            if let cachedData { return cachedData }
+            if let cached { return cached }
             throw error
         }
     }
 
     private func recordRefresh() {
-        let now = Date()
+        let now = now()
         lastRefresh = now
         defaults.set(now, forKey: Self.lastRefreshKey)
     }
 
     private func recordAttempt() {
-        let now = Date()
+        let now = now()
         lastAttempt = now
         defaults.set(now, forKey: Self.lastAttemptKey)
     }
 
     private func recordSportsRefresh() {
-        let now = Date()
+        let now = now()
         sportsLastRefresh = now
         defaults.set(now, forKey: Self.sportsLastRefreshKey)
     }
 
     private func recordSportsAttempt() {
-        let now = Date()
+        let now = now()
         sportsLastAttempt = now
         defaults.set(now, forKey: Self.sportsLastAttemptKey)
     }
@@ -406,7 +447,7 @@ enum XMLTVParser {
         )
         let parser = XMLParser(data: data)
         parser.delegate = delegate
-        guard parser.parse() else { throw EPGServiceError.invalidGuide }
+        guard parser.parse(), delegate.hasTVRoot else { throw EPGServiceError.invalidGuide }
         return delegate.programsByStationID.mapValues { programs in
             programs.sorted { $0.start < $1.start }
         }
@@ -428,6 +469,23 @@ private final class XMLTVParserDelegate: NSObject, XMLParserDelegate {
     let windowEnd: Date
     let allowedStationIDs: Set<String>
     private(set) var programsByStationID: [String: [EPGProgram]] = [:]
+    private(set) var hasTVRoot = false
+    private var sawRoot = false
+    private enum ParsedTimestamp {
+        case valid(Date)
+        case invalid
+    }
+    // These values and formatters belong to one document, never shared requests.
+    private var timestamps: [String: ParsedTimestamp] = [:]
+    private lazy var dateFormatters: [DateFormatter] = {
+        ["yyyyMMddHHmmss Z", "yyyyMMddHHmm Z", "yyyyMMddHHmmssZ", "yyyyMMddHHmmZ"].map { format in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.dateFormat = format
+            return formatter
+        }
+    }()
     private var documentStationIDs = Set<String>()
     private var draft: ProgrammeDraft?
     private var activeElement: String?
@@ -446,6 +504,11 @@ private final class XMLTVParserDelegate: NSObject, XMLParserDelegate {
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
+        if !sawRoot {
+            sawRoot = true
+            hasTVRoot = elementName == "tv"
+            if !hasTVRoot { parser.abortParsing(); return }
+        }
         switch elementName {
         case "channel":
             if let stationID = attributeDict["id"] {
@@ -456,8 +519,8 @@ private final class XMLTVParserDelegate: NSObject, XMLParserDelegate {
                   allowedStationIDs.contains(stationID),
                   let rawStart = attributeDict["start"],
                   let rawEnd = attributeDict["stop"],
-                  let programmeStart = Self.parseDate(rawStart),
-                  let programmeEnd = Self.parseDate(rawEnd),
+                  let programmeStart = parseDate(rawStart),
+                  let programmeEnd = parseDate(rawEnd),
                   programmeStart < windowEnd,
                   programmeEnd > windowStart else {
                 draft = nil
@@ -519,15 +582,21 @@ private final class XMLTVParserDelegate: NSObject, XMLParserDelegate {
         programsByStationID = programsByStationID.filter { documentStationIDs.contains($0.key) }
     }
 
-    private static func parseDate(_ value: String) -> Date? {
+    private func parseDate(_ value: String) -> Date? {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        for format in ["yyyyMMddHHmmss Z", "yyyyMMddHHmm Z", "yyyyMMddHHmmssZ", "yyyyMMddHHmmZ"] {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.calendar = Calendar(identifier: .gregorian)
-            formatter.dateFormat = format
-            if let date = formatter.date(from: normalized) { return date }
+        if let cached = timestamps[normalized] {
+            switch cached {
+            case .valid(let date): return date
+            case .invalid: return nil
+            }
         }
+        for formatter in dateFormatters {
+            if let date = formatter.date(from: normalized) {
+                timestamps[normalized] = .valid(date)
+                return date
+            }
+        }
+        timestamps[normalized] = .invalid
         return nil
     }
 }

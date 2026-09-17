@@ -1439,6 +1439,8 @@ enum ParserSmoke {
             fatalError("Very Local stations are not assigned to Local/News as requested")
         }
 
+        xmltvAcceptance()
+
         let xmltv = Data(#"""
         <?xml version="1.0" encoding="UTF-8"?>
         <tv>
@@ -1576,4 +1578,85 @@ enum ParserSmoke {
 
         print("Parser smoke test passed")
     }
+    private static func xmltvAcceptance() {
+        let start = ISO8601DateFormatter().date(from: "2026-09-17T00:00:00Z")!
+        let end = start.addingTimeInterval(7_200)
+        func parse(_ xml: String, stations: Set<String> = ["1", "2"]) throws -> [String: [EPGProgram]] {
+            try XMLTVParser.parse(data: Data(xml.utf8), from: start, to: end, allowedStationIDs: stations)
+        }
+        func row(_ station: String, _ title: String, _ from: String, _ to: String) -> String {
+            "<programme channel=\"\(station)\" start=\"\(from)\" stop=\"\(to)\"><title>\(title)</title><desc> Description </desc><category>News</category><icon src=\"https://image.invalid/a.png\"/></programme>"
+        }
+        func expected(_ station: String, _ title: String, _ offset: TimeInterval, _ stop: TimeInterval) -> EPGProgram {
+            let date = start.addingTimeInterval(offset)
+            return EPGProgram(id: "\(station)|\(Int(date.timeIntervalSince1970))|\(title)", stationID: station, title: title,
+                              start: date, end: start.addingTimeInterval(stop), synopsis: "Description", category: "News",
+                              imageURL: URL(string: "https://image.invalid/a.png"))
+        }
+        // All four accepted forms, signed offsets, trimming, out-of-order input,
+        // duplicate timestamps and both strict window edges. Compare every field.
+        let xml = "<tv><channel id=\"1\"/><channel id=\"2\"/>"
+            + row("1", "C", "20260917070000+0530", "20260917073000+0530")
+            + row("1", "A", "20260916200000 -0400", "20260916203000 -0400")
+            + row("1", "D", "202609170130+0000", "202609170200+0000")
+            + row("1", "B", "202609170030 +0000", "202609170100 +0000")
+            + row("2", "Repeated", " 20260916200000 -0400 ", "20260916203000 -0400")
+            + row("1", "Ends at start", "20260916230000 +0000", "20260917000000 +0000")
+            + row("1", "Starts at end", "20260917020000 +0000", "20260917030000 +0000")
+            + row("1", "Malformed start", "nonsense", "20260917003000 +0000")
+            + row("1", "Repeated malformed", "nonsense", "20260917003000 +0000")
+            + row("1", "Malformed stop", "20260917000000 +0000", "invalid")
+            + row("3", "Undeclared", "20260917000000 +0000", "20260917003000 +0000")
+            + "</tv>"
+        // Equal-start rows have no stable tie-breaker contract; compare a set of IDs
+        // at that boundary while requiring chronological order and full field equality.
+        let wanted = ["1": [expected("1", "A", 0, 1_800), expected("1", "B", 1_800, 3_600),
+                            expected("1", "C", 5_400, 7_200), expected("1", "D", 5_400, 7_200)],
+                      "2": [expected("2", "Repeated", 0, 1_800)]]
+        func verify(_ actual: [String: [EPGProgram]], _ wanted: [String: [EPGProgram]]) {
+            guard actual.keys.sorted() == wanted.keys.sorted() else { fatalError("XMLTV station filtering changed") }
+            for (station, programs) in wanted {
+                guard let result = actual[station], result.map(\.start) == result.map(\.start).sorted(),
+                      result.sorted(by: { $0.id < $1.id }) == programs.sorted(by: { $0.id < $1.id }) else {
+                    fatalError("XMLTV dates, ordering or program fields changed")
+                }
+            }
+        }
+        do {
+            for _ in 0..<3 { verify(try parse(xml), wanted) }
+            verify(try parse(xml, stations: ["2"]), ["2": wanted["2"]!])
+            // The station must be declared even when explicitly allowed.
+            guard try parse(xml, stations: ["3"]).isEmpty else { fatalError("Undeclared XMLTV station accepted") }
+            for valid in ["<tv/>", "<?xml version=\"1.0\"?><!--comment--><tv></tv>", "<tv><channel id=\"1\"/></tv>"] {
+                guard try parse(valid).isEmpty else { fatalError("Valid empty XMLTV rejected") }
+            }
+            guard try parse(xml, stations: []).isEmpty else { fatalError("Zero-match XMLTV rejected") }
+            // Every timestamp is unique in this document; expected values are
+            // computed arithmetically, independently of the parser's date logic.
+            var uniqueXML = "<tv><channel id=\"1\"/>"
+            var uniqueExpected: [EPGProgram] = []
+            for minute in 0..<40 {
+                let from = String(format: "2026091700%02d10 +0000", minute)
+                let to = String(format: "2026091700%02d40 +0000", minute)
+                uniqueXML += row("1", "Unique \(minute)", from, to)
+                uniqueExpected.append(expected("1", "Unique \(minute)", Double(minute * 60 + 10), Double(minute * 60 + 40)))
+            }
+            uniqueXML += "</tv>"
+            verify(try parse(uniqueXML), ["1": uniqueExpected])
+            // Concurrent delegates parse separate data/filters; no shared formatters
+            // or cross-document result cache may influence any output.
+            DispatchQueue.concurrentPerform(iterations: 6) { iteration in
+                do {
+                    if iteration.isMultiple(of: 2) { verify(try parse(xml), wanted) }
+                    else { verify(try parse(uniqueXML), ["1": uniqueExpected]) }
+                } catch { fatalError("Independent XMLTV parse failed: \(error)") }
+            }
+        } catch { fatalError("XMLTV acceptance failed: \(error)") }
+        for invalid in ["", "<tv>", "<html/>", "<error><tv/></error>", "<tv/><tv/>"] {
+            do { _ = try parse(invalid); fatalError("Invalid XMLTV root/document accepted") }
+            catch EPGServiceError.invalidGuide { }
+            catch { fatalError("XMLTV typed error changed") }
+        }
+    }
+
 }
