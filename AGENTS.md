@@ -48,7 +48,7 @@ Do not reset simulator data, reinstall by deleting the app, change shared settin
 
 ## Research and model choice
 
-Joe authorizes PM to choose appropriate models per task; record overrides and use stronger reasoning for ambiguity/risk. Prefer bounded assignments over indiscriminate parallel/max-effort work. Every proposed product improvement needs a relevant competitive comparison or an explicit reason competitor parity does not apply. Cite current official evidence, label platform limits and distinguish documented features from measured user benefit. Product improvements remain deferred until a scoped implementation milestone is selected.
+Joe authorizes PM to choose appropriate models per task; record overrides and use stronger reasoning for ambiguity/risk. Prefer bounded assignments over indiscriminate parallel/max-effort work. Every proposed product improvement needs a relevant competitive comparison or an explicit reason competitor parity does not apply. Cite current official evidence, label platform limits and distinguish documented features from measured user benefit. S1 is selected for implementation under TEAM-4. Later large product directions remain deferred; PM may scope further small UI/performance/reliability slices under Joe's instruction to keep making progress.
 
 ## Verification and reporting
 

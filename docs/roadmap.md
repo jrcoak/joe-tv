@@ -1,9 +1,9 @@
 # Joe-TV improvement roadmap
 
-Status: **future-sprint proposals; no product changes started**. TEAM-3, September 16, 2026 EDT.
+Status: **S1 ordinary watching/returning is active** under TEAM-4. Remaining packages are future candidates.
 Joe's priority is a polished, responsive app with intuitive navigation and fewer heavy click paths. Preserve its live-TV/sports identity and existing visual direction.
 
-The team recommends starting with **ordinary watching and returning**: repair the observed Back/focus problems, simplify the current-program watch path, and measure responsiveness. A sidebar and favorite-team Home remain valuable later experiments. This order is a PM recommendation, not a committed sprint schedule.
+The team recommends starting with **ordinary watching and returning**: repair the observed Back/focus problems, simplify the current-program watch path, and measure responsiveness. A sidebar and favorite-team Home remain valuable later experiments. Joe has authorized continued progress; the small first sprint is now assigned in docs/assignments/S1.md.
 
 ## What the competitive research changes
 
@@ -32,7 +32,7 @@ All benefits above are expectations until validated. Full recommendation details
 
 ## Proposed first implementation sprint — ordinary watching and returning
 
-**Not started.** A concrete candidate for Joe to select later:
+**Assigned as S1.** Current scope and acceptance are in docs/assignments/S1.md:
 
 1. App/Playback reproduce and fix scorebug Back and guide-origin focus restoration using existing layer semantics.
 2. Design/App trial direct tuning for currently airing guide cells and a direct favorites-settings action in empty Home. Keep upcoming details and explicit broadcast selection.

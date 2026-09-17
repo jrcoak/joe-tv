@@ -1,4 +1,5 @@
 # Joe-TV accepted decisions
+
 | ID | Decision | Basis |
 | --- | --- | --- |
 | TEAM-001 | Improve the existing Joe-TV app; do not start over. | Joe's team-setup request. |
@@ -18,5 +19,7 @@
 | TEAM-015 | PM may choose different models and reasoning effort by task, balancing quality and sensible resource use. | Joe explicitly authorized model delegation. |
 | TEAM-016 | Research major streaming-app patterns for proposed improvements, including Netflix, Disney+, YouTube TV and relevant peers; distinguish source claims from measured usability and map findings to Joe-TV. | Joe's competitive research request. |
 | TEAM-017 | Standups mean internal PM/specialist coordination. Recommended implementation: one fresh read-only coordinator subagent per checkpoint, durable repo state, existing specialist contexts and PM decision ownership. No daily schedule, replacement PM or extra user-owned standup task. | Joe corrected the audience; mechanism is PM's operating recommendation. |
+
+| TEAM-018 | Begin S1 and continue useful small UI/navigation/performance/reliability work using the established team. Larger sidebar/Home directions stay later; no automatic release or unattended schedule. | Joe: “just keep plugging away on things”; PM scopes ordinary watching and returning as the first implementation sprint. |
 
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.

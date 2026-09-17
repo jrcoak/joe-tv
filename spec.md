@@ -1,8 +1,8 @@
 # Joe-TV product specification
 
-Revision: TEAM-3 (future-sprint research and team operation, September 2026)
+Revision: TEAM-4 (implementation begins: everyday watching and returning, September 2026)
 Owner: Joe Coakley
-Status: existing product; first team milestone is assessment and innovation planning
+Status: existing product; M0/R1 complete, S1 implementation active
 
 ## Outcome
 
@@ -14,7 +14,7 @@ Make Joe-TV an enjoyable, fast, dependable Apple TV experience for live channels
 2. **Future direction: left-side primary navigation**, similar to the library navigation Joe likes in Plex. Explore it as a coherent remote/focus system, not merely moving buttons. It is a roadmap/design proposal until a specific migration is selected.
 3. **Future direction: curated Home across channels and teams.** Favorite teams such as the Patriots and Bruins should surface relevant games on Home. Propose team identity/preferences, event matching, empty/off-season behavior, and migration from existing channel favorites; do not quietly replace the current Home during assessment.
 
-Joe explicitly deferred these improvements to future sprints. Current work covers setup, assessment, competitive research and roadmap only. For every proposed product improvement, compare relevant major-app patterns against Joe-TV, with current source links, platform limitations, tradeoffs and a small validation. Netflix, Disney+, YouTube TV and Plex are core references; additional apps are useful where their patterns fit. Document what already works as well as gaps. Competitor feature documentation does not establish usability or speed.
+Joe has now asked PM to keep making useful progress. S1 implements the small first UI/navigation package in docs/assignments/S1.md, with independent verification and performance measurement. Larger sidebar and curated Home directions remain later work. For every proposed product improvement, compare relevant major-app patterns against Joe-TV, with current source links, platform limitations, tradeoffs and a small validation. Netflix, Disney+, YouTube TV and Plex are core references; additional apps are useful where their patterns fit. Document what already works as well as gaps. Competitor feature documentation does not establish usability or speed.
 
 For M0, prioritize an evidence-backed friction map and before/after interaction proposals. Record press count, focus transitions, context restoration, and measurable responsiveness where practical. Distinguish measured performance from source-based hypotheses. The recommended first implementation milestone must address UI/navigation/performance. Security and reliability findings remain part of engineering review, without displacing this priority unless a confirmed urgent issue warrants it.
 
@@ -74,4 +74,8 @@ Every delivered change states the exact tested commit and which checks were simu
 
 ## Out of current scope
 
-SHELF; a fresh app; the speculative public bring-your-own-IPTV fork; synthetic sports channels; multiview/recording/replays; billing; new accounts/profiles; replacing provider authorization; automatic ongoing feature development; recurring meetings; Notion/Northstar integration. Existing implemented capabilities remain supported even when an old template excluded them.
+SHELF; a fresh app; the speculative public bring-your-own-IPTV fork; synthetic sports channels; multiview/recording/replays; billing; new accounts/profiles; replacing provider authorization; unbounded feature expansion or unattended recurring development; recurring meetings; Notion/Northstar integration. Existing implemented capabilities remain supported even when an old template excluded them.
+
+## Active S1 acceptance
+
+Follow docs/assignments/S1.md for owned files, expected behavior, runtime ownership and validation. The latest user instruction authorizes implementation; historical M0/R1 report-only boundaries apply to those completed milestones, not this sprint. Local fixes and commits are in scope; release operations remain separate.

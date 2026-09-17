@@ -71,7 +71,7 @@ Keep this PM task as Joe's primary contact. Joe clarified standups are internal 
 
 A worker handoff includes assignment ID, baseline/spec, summary, branch/commits, checks/results, limitations, and integration notes. Send it to the PM task once; then end the turn.
 
-PM delivers the integrated commit, assessment/acceptance results, ideas, next-milestone recommendation, and pending hardware checks. Stop at the milestone; do not automatically launch the next idea.
+PM delivers the integrated commit, assessment/acceptance results, ideas, next-milestone recommendation, and pending hardware checks. Complete each bounded milestone with evidence. Joe now authorizes PM to select subsequent small UI/performance/reliability slices without asking to begin each one. Major features and release operations retain their explicit scope boundaries; no unattended schedule is implied.
 
 On resumption, read the roster, decisions, current assignment file, relevant task snapshots, and Git state. Reconcile completed and in-flight work before assigning anything. Revalidate runtime ownership after interruptions. Never assume that an old worktree, host path, simulator, or deployment still exists.
 
