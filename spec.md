@@ -1,12 +1,20 @@
 # Joe-TV product specification
 
-Revision: TEAM-1 (team adoption, September 2026)
+Revision: TEAM-2 (Joe's UI/performance priorities, September 2026)
 Owner: Joe Coakley
 Status: existing product; first team milestone is assessment and innovation planning
 
 ## Outcome
 
 Make Joe-TV an enjoyable, fast, dependable Apple TV experience for live channels, live sports, and optional fantasy-football context. Continue the existing app and services. Joe works primarily with a PM who coordinates six specialists and presents integrated, verified work and concrete product ideas.
+
+## Product priorities from Joe
+
+1. **Highest immediate priority: UI quality, performance, and navigation simplicity.** Joe likes the current visual direction but finds parts clunky or amateur. Reduce unnecessary presses and transitions, eliminate focus surprises, and improve responsiveness. Judge proposals by whether normal watching feels natural and easy, not by how many features they add.
+2. **Future direction: left-side primary navigation**, similar to the library navigation Joe likes in Plex. Explore it as a coherent remote/focus system, not merely moving buttons. It is a roadmap/design proposal until a specific migration is selected.
+3. **Future direction: curated Home across channels and teams.** Favorite teams such as the Patriots and Bruins should surface relevant games on Home. Propose team identity/preferences, event matching, empty/off-season behavior, and migration from existing channel favorites; do not quietly replace the current Home during assessment.
+
+For M0, prioritize an evidence-backed friction map and before/after interaction proposals. Record press count, focus transitions, context restoration, and measurable responsiveness where practical. Distinguish measured performance from source-based hypotheses. The recommended first implementation milestone must address UI/navigation/performance. Security and reliability findings remain part of engineering review, without displacing this priority unless a confirmed urgent issue warrants it.
 
 ## Existing product to preserve
 
@@ -44,12 +52,12 @@ Deliverables:
 2. A shared product/technical context that records accepted decisions and identifies stale documentation.
 3. Specialist assessments of the exact baseline. Every role provides both concrete risks and opportunities, not only a defect list.
 4. Fresh offline smoke and simulator build evidence. Simulator/UI coverage is performed on an assigned resource; unsupported or inaccessible checks are explicitly pending. Physical FairPlay and remote checks remain a separate device matrix for Joe.
-5. A ranked shortlist of three to five worthwhile improvements. Each includes the viewer problem, proposed behavior, evidence, expected benefit, effort, dependencies, risks, and the smallest useful prototype or validation.
+5. A ranked shortlist of three to five worthwhile improvements, led by UI polish, fewer navigation steps, and responsiveness. Each includes the viewer problem, proposed behavior, evidence, expected benefit, effort, dependencies, risks, and the smallest useful prototype or validation.
 6. PM's proposed next milestone, scoped so Joe can choose a direction without designing the implementation himself.
 
 Acceptance:
 
-- Every specialist acknowledges TEAM-1 and the same app baseline plus team-bootstrap revision.
+- Every specialist acknowledges the governing spec revision; affected Design/App work adopts TEAM-2 and the same app baseline plus team-bootstrap revision.
 - Each report separates observed behavior, old reports, inferred risks, and proposed ideas.
 - Design ideas follow RALLY's adopted visual language and Joe's later decisions.
 - At least two independently owned work packages run without conflicting source edits or runtime use.

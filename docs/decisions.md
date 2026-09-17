@@ -16,4 +16,6 @@
 
 | TEAM-012 | Integrate release task commit `138c2714805ce47d26f0da5c3d9d8cf48bd488b8` (build number 7) into PM branch. Specialist assessment source remains c08e551 plus bootstrap 314968d; the only release delta is the build number. | Fresh Git inspection; original checkout stays untouched. |
 
+| TEAM-013 | Highest priority is UI polish, performance, simple intuitive navigation, and fewer heavy click paths. Explore left-side Plex-like primary navigation and a future curated Home using favorite teams such as Patriots/Bruins. These future directions do not authorize an immediate layout replacement. | Joe's latest product direction; spec advanced to TEAM-2. |
+
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.

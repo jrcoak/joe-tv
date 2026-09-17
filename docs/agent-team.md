@@ -39,7 +39,7 @@ Protect the user's original checkout and any unrelated task still using it. Pref
 
 Every work package names an ID, role/task ID, objective, product-spec revision, starting commit, allowed files or symbols, dependencies, acceptance criteria, verification, and expected deliverable. Tell workers what they may implement and what remains a proposal.
 
-Use purpose-built task tools to send assignments, read status, and wait for completion. Route by recorded task ID. Do not infer IDs from titles. Read a compact progress snapshot or wait with the last cursor; don't repeatedly request unchanged status.
+Use purpose-built task tools to send assignments, read status, and wait for completion. If a worker's outbound message is unavailable or rejected, PM retrieves its final report via task status and its commit; never force Joe to act as a message relay. Route by recorded task ID. Do not infer IDs from titles. Read a compact progress snapshot or wait with the last cursor; don't repeatedly request unchanged status.
 
 ## Runtime sessions
 
