@@ -3,6 +3,10 @@
 Research date: 2026-09-16 (America/New_York)
 Baseline reviewed: `5a2dd49fe30a2a25989207301d9a40a66305eab1`
 
+## Current status — closed
+
+Joe has dropped all new-channel work, including WBZ (TEAM-025). No candidate below remains active. The earlier selection and research are retained as history only.
+
 ## Product decision — September 17, 2026
 
 Joe selected **WBZ / CBS News Boston only** for possible future consideration and rejected the other candidates as not worthwhile for his app. No playback sample or integration is currently assigned. UI quality and performance remain the active priority. The ranking and recommendations below are historical research, superseded by this product decision.

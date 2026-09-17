@@ -14,7 +14,7 @@ Provider benchmark on a fixed synthetic 70-station / 3,360-program guide: five f
 
 ## Stream discovery
 
-Joe retained **WBZ / CBS News Boston only** as a future candidate on September 17; the other [research candidates](../research/public-stream-shortlist.md) are dropped from active consideration. WBZ’s direct integration path is unresolved. No channel was added or media endpoint probed; UI/performance work remains active.
+Joe has dropped new-channel work entirely (TEAM-025), including WBZ. The [earlier research](../research/public-stream-shortlist.md) is historical only. Existing app quality and verification remain the focus.
 
 ## Resume when UI access is available
 
@@ -32,4 +32,4 @@ Rapid duplicate Back, physical Siri Remote, real media/captions/FairPlay and cou
 
 S3 source and App/SecOps reviews are integrated; independent QA report `5ba967367f25a938c42aef061f23f270c3c8819f` records all three fresh checks passing at `9d3cd8a`. S1/S2 artifact hashes were reverified unchanged. All specialist runs and compilation are complete; no active runtime session or unattended work is installed.
 
-Next: restore supported Simulator access, finish the pending guide-controls correction and Channels visual acceptance, route any observed defect to its owner, then verify the final combined app. Joe has been asked to open Simulator and confirm it is visible; no reply has yet been received. Do not infer UI availability from elapsed time or an open browser. Further layout changes should follow this acceptance checkpoint. WBZ remains a future candidate, and sidebar/team-curated Home remain later product directions.
+Next: restore supported Simulator access, finish the pending guide-controls correction and Channels visual acceptance, route any observed defect to its owner, then verify the final combined app. Joe has been asked to open Simulator and confirm it is visible; no reply has yet been received. Do not infer UI availability from elapsed time or an open browser. Further layout changes should follow this acceptance checkpoint. New-channel work is closed; sidebar/team-curated Home remain later product directions.
