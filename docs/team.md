@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1 integrated candidate in QA; R2 shortlist complete**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
+Status: **S1/S2 source assembled; offline QA next; UI blocked by locked Mac**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -11,12 +11,12 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 | Role | Exact task ID | Host | Worktree | Branch | Assignment |
 | --- | --- | --- | --- | --- | --- |
 | PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | S1 integration |
-| Product Design | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` | local | `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV` | `codex/joe-tv-design-s1` | S1-DESIGN |
-| tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s1` | S1-APP |
+| Product Design | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` | local | `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV` | `codex/joe-tv-design-s2` | S2-DESIGN complete |
+| tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s2` | S2-APP complete |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
-| Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-r2` | R2-SERVICES |
-| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s1-candidate` | S1-QA |
-| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s1-s2` | SECURITY-S1-S2 complete |
+| Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-s2` | S2-SERVICES complete |
+| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s1-correction` | S2-QA offline assignment next |
+| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s2-review` | S2-SECOPS complete |
 
 PM owns this roster. Task titles are descriptive; route by exact ID. Worktrees and branch names are recorded from actual task reports rather than guessed.
 
@@ -45,3 +45,7 @@ QA owns only the dedicated Joe-TV Team QA simulator for this sprint, through the
 ## Active candidate checkpoint
 
 Candidate `f394d4d356851092ae579051cff5a5a667d53cdb` passed fresh smoke and unsigned Debug build 7; QA UI acceptance is pending, with a cleanly reproduced guide-origin player focus problem under investigation. Home origin, Quick Switch origin preservation and removed-favorite fallback have passed sampled journeys. App/Playback are diagnosing without changing the frozen candidate. SecOps found no source-identified S1 fixture security blocker; see `sprints/S1-S2-secops.md` for precise isolation limits. R2 shortlist is integrated; no streams have been added or tested.
+
+## Locked-host continuation
+
+S1 correction d010f39 passes fresh smoke/build but has no UI acceptance because the Mac locked. QA preserved `.build/S1-corrected-artifact/Joe-TV.app` in its worktree, stopped the app and shut down the dedicated simulator. Services source a9dd5d7 and App Channels source 1783a1f plus their reports and SecOps acceptance are now integrated; the next exact combined commit goes to offline QA. No source/build success substitutes for the remaining UI checks. PM has asked Joe to unlock and will coordinate resumption; no automation or lock workaround is installed.
