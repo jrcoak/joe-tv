@@ -1,16 +1,16 @@
 # Joe-TV team roster
 
-Status: six specialist tasks created in isolated worktrees; onboarding and M0 assessment in progress.
+Status: six specialist tasks established; M0 reports and R1 research integrated. PM synthesis and final independent QA are in progress.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
-Spec revision: TEAM-2 (UI/performance priorities; original technical assessments began at TEAM-1)
+Spec revision: TEAM-3 (deferred product improvements, competitive research, model choice and internal standups). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
 App baseline: c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8
 Team bootstrap: `314968dc10f0bd73451ed6b0876a7fc7ed5c5233`
 PM additionally integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd488b8`; application code is otherwise identical.
 
 | Role | Exact task ID | Host | Worktree | Branch | Assignment |
 | --- | --- | --- | --- | --- | --- |
-| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | M0 coordination |
+| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | M0/R1 integration |
 | Product Design | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` | local | `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV` | `codex/joe-tv-design` | M0-DESIGN |
 | tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app` | M0-APP |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback` | M0-PLAYBACK |
@@ -31,3 +31,9 @@ Give a request to PM. PM consults the appropriate specialists, defines a bounded
 ## Messaging verification
 
 Five onboarding callbacks reached PM. App's outbound callback was rejected by automatic approval review on destination-authorization grounds; PM retrieved its report/commit through Git and task status instead. PM-to-App follow-up succeeds. Use final responses plus `wait_threads`/`read_thread` as a supported fallback; do not require Joe to relay messages or retry rejected sends in a loop.
+
+## Current checkpoint
+
+All six baseline reports are received. Design/Playback are completing research spec acknowledgments; other specialists are idle pending bounded assignments. Final QA will review the exact assembled commit. QA's dedicated Joe-TV Team QA simulator (C95B257D-0111-40A1-9D02-2AD70D850FF8) is shut down; no team runtime session remains active.
+
+Read [roadmap](roadmap.md), [assessment](assessments/summary.md), and [internal standup protocol](standups/README.md). Setup lives on codex/joe-tv-team and has not been merged/pushed to main. Future tasks must receive this branch/commit explicitly until integration into main is separately selected.

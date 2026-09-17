@@ -2,7 +2,7 @@
 
 ## Agent team
 
-Work with **Joe-TV · PM / Integrator** for ideas, bugs, and delivery. PM coordinates Product Design, tvOS App, Playback, Services, QA, and SecOps. See [product scope](spec.md), [team roster](docs/team.md), [operating model](docs/agent-team.md), and [current milestone](docs/assignments/M0.md). Each specialist works in an isolated checkout; the existing application and user preferences are preserved.
+Work with **Joe-TV · PM / Integrator** for ideas, bugs, and delivery. PM coordinates Product Design, tvOS App, Playback, Services, QA, and SecOps. See [product scope](spec.md), [team roster](docs/team.md), [operating model](docs/agent-team.md), [current milestone](docs/assignments/M0.md), [assessment](docs/assessments/summary.md), and [future roadmap](docs/roadmap.md). Each specialist works in an isolated checkout; the existing application and user preferences are preserved.
 
 A native SwiftUI tvOS client for a user's existing Seasons4U membership. The UI is adapted from the website's dark, editorial player design for Siri Remote focus navigation and native `AVPlayer` playback.
 
@@ -13,10 +13,10 @@ For architecture, authentication, parser contracts, FairPlay behavior, design de
 - Native email/password login against `/Account/Login`, including the server's anti-forgery token.
 - Cookie-backed authenticated sessions. Passwords are used only for the login request and are not persisted by the app.
 - Live catalog loading from `/Player`, including JSON-backed football and Baseball schedules, the lazy-loaded Baseball backup partial, historical server-rendered sports rows, standard streams, DRM variants, scheduled events, and remote artwork.
-- A curated 66-channel Live TV lineup assembled from both `/PlayerDRMChannels` and legacy `/Player#channels` playback actions, with stable playback identities, an offline 512-pixel channel-brand library, genre rails, search, and contextual focus metadata.
-- All 28 Very Local Hearst markets plus its national channel, using public station configuration, Apple-compatible HLS, public now/next guide data, and bundled high-resolution WMUR/WCVB branding. Very Local can also be opened without a Seasons4U session and does not require a second login.
+- A curated 70-channel Live TV directory assembled from both `/PlayerDRMChannels` and legacy `/Player#channels` playback actions, with stable playback identities, an offline 512-pixel channel-brand library, genre rails, search, and contextual focus metadata.
+- All 28 Very Local Hearst markets plus its national channel, using public station configuration, Apple-compatible HLS, public now/next guide data, and bundled high-resolution WMUR/WCVB branding. Very Local uses a separate public provider path and does not require Very Local credentials.
 - Production XMLTV guide data from Personal Media API, authenticated by a private build-injected `MEDIA_READ_TOKEN`. Guide refreshes use numeric station IDs, a five-minute floor, ETag revalidation, and a local last-known-good cache.
-- Production ESPN sports schedules and normalized preview/recap details published by the Mac mini, then read from Personal Media API with the same route-limited token. Joe-TV never contacts ESPN. Featured-plus-four detail prefetch is nonblocking, limited to two concurrent reads, and uses per-event ETag/disk caching for richer hero artwork and descriptions without treating metadata as a playback source.
+- Production ESPN sports schedules and normalized preview/recap details published by the Mac mini, then read from Personal Media API with the same route-limited token. Ordinary sports metadata uses that published-data path; optional Fantasy Zone intentionally reads live ESPN scores and Sleeper directly. Featured-plus-four detail prefetch is nonblocking, limited to two concurrent reads, and uses per-event ETag/disk caching for richer hero artwork and descriptions without treating metadata as a playback source.
 - Now-playing metadata plus an on-demand **Up Next** disclosure on each focused channel; schedules stay out of the way until requested, and channel playback remains independent when guide data does not exist.
 - On-demand stream resolution through the site's authenticated `Watch_*` endpoints. Signed media URLs are kept only in memory.
 - Native HLS playback with `AVPlayer`.
@@ -32,7 +32,7 @@ For architecture, authentication, parser contracts, FairPlay behavior, design de
 4. Copy `Config/Private.example.xcconfig` to the ignored `Config/Private.xcconfig` and set the private `MEDIA_READ_TOKEN` used by the Personal Media API deployment.
 5. Build and sign in with your Seasons4U account inside the app. Guide and sports metadata load automatically; there is no television pairing flow.
 
-The login screen also offers **Watch Very Local free**. That route uses Very Local's public catalog and playback configuration; no Very Local credentials are requested or stored.
+Very Local is integrated through public catalog/playback configuration. The current login screen has no separate “Watch Very Local free” entry; that instruction belongs to an earlier UI.
 
 `Config/Private.xcconfig` must never be committed and is used only by Debug builds. Internal TestFlight archives read `Config/Internal.xcconfig`, which must contain a separate revocable, rate-limited read token and is also git-ignored. Release builds fail when that token is missing, shorter than 32 characters, or still a placeholder. Debug builds remain buildable without their token and show a configuration-oriented schedule error while preserving Seasons4U playback.
 
