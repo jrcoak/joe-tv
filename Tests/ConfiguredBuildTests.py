@@ -14,6 +14,17 @@ TOKEN = 'synthetic-only-test-value-' + 'a' * 40
 
 
 class ConfiguredBuildTests(unittest.TestCase):
+    def test_only_original_checkout_debug_path_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / 'original'
+            common = original / '.git'
+            expected = original / 'Config' / 'Private.xcconfig'
+            self.assertEqual(helper.validate_config_path(expected, common), expected.resolve())
+            for other in [Path(directory) / 'worktree' / 'Config' / 'Private.xcconfig',
+                          original / 'Config' / 'Internal.xcconfig']:
+                with self.assertRaises(ValueError):
+                    helper.validate_config_path(other, common)
+
     def test_missing_placeholder_and_ambiguous_tokens_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'Private.xcconfig'

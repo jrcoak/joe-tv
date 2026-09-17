@@ -12,6 +12,16 @@ import sys
 from urllib.parse import quote
 
 
+def validate_config_path(config, common_git_dir):
+    # Worktrees share the original checkout's .git directory. Only that existing
+    # checkout's explicitly authorized Debug file can supply this build.
+    expected = (Path(common_git_dir).resolve().parent / 'Config' / 'Private.xcconfig').resolve()
+    actual = config.resolve()
+    if actual != expected:
+        raise ValueError('Use the original checkout’s existing private Debug configuration.')
+    return actual
+
+
 def read_token(config):
     # Only consume the explicit existing Debug file; never copy or print it.
     matches = re.findall(r'^\s*MEDIA_READ_TOKEN\s*=\s*([^\r\n]*)', config.read_text(), re.MULTILINE)
@@ -55,12 +65,13 @@ def main():
     parser.add_argument('--config', required=True, type=Path, help='Existing private Debug xcconfig; never a Release/Internal token')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    config = args.config.resolve()
-    if config.name != 'Private.xcconfig':
-        parser.error('Select the existing Private.xcconfig for Debug, not Internal/Release configuration.')
     try:
+        common = subprocess.check_output(
+            ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+            cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
+        config = validate_config_path(args.config, common)
         token = read_token(config)
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.CalledProcessError):
         print('Configuration preflight failed: supply the existing valid private Debug config.', file=sys.stderr)
         return 2
     build = root / '.build' / 'ConfiguredDerivedData'
