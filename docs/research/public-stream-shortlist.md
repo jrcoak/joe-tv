@@ -3,7 +3,11 @@
 Research date: 2026-09-16 (America/New_York)
 Baseline reviewed: `5a2dd49fe30a2a25989207301d9a40a66305eab1`
 
-## Recommendation
+## Product decision — September 17, 2026
+
+Joe selected **WBZ / CBS News Boston only** for possible future consideration and rejected the other candidates as not worthwhile for his app. No playback sample or integration is currently assigned. UI quality and performance remain the active priority. The ranking and recommendations below are historical research, superseded by this product decision.
+
+## Original research recommendation
 
 The best later QA sample is **Classic Arts Showcase**, **NHK WORLD-JAPAN**, and **DW English**, in that order. Each adds programming absent from the current catalog and has both a current publisher presence and a direct-HLS lead on a broadcaster-branded delivery host. Classic Arts Showcase is the standout: it is a free, noncommercial arts service, publishes a 24-hour web stream, and explicitly provides its programming free to broadcasters. None of those facts alone grants Joe TV permission to embed its web HLS feed, so endpoint provenance and acceptable use still need review before catalog work.
 

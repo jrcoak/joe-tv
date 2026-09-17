@@ -13,7 +13,7 @@ Provider benchmark on a fixed synthetic 70-station / 3,360-program guide: five f
 
 ## Stream discovery
 
-The [eight-channel shortlist](../research/public-stream-shortlist.md) is complete. Classic Arts Showcase, NHK WORLD-JAPAN and DW English are the strongest initial playback leads; CBS News Boston is locally relevant but its direct integration path is unresolved. Playlist resolution and availability labels remain untested. No channels were added or media endpoints probed. QA sampling and integration are later bounded steps.
+Joe retained **WBZ / CBS News Boston only** as a future candidate on September 17; the other [research candidates](../research/public-stream-shortlist.md) are dropped from active consideration. WBZ’s direct integration path is unresolved. No channel was added or media endpoint probed; UI/performance work remains active.
 
 ## Resume after unlock
 
