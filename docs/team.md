@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1 implementation active; R2 public-stream research active**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
+Status: **S1 integrated candidate in QA; R2 shortlist complete**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -15,8 +15,8 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 | tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s1` | S1-APP |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
 | Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-r2` | R2-SERVICES |
-| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s1` | S1-QA |
-| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops` | M0-SECOPS |
+| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s1-candidate` | S1-QA |
+| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s1-s2` | SECURITY-S1-S2 complete |
 
 PM owns this roster. Task titles are descriptive; route by exact ID. Worktrees and branch names are recorded from actual task reports rather than guessed.
 
@@ -41,3 +41,7 @@ Read [roadmap](roadmap.md), [assessment](assessments/summary.md), and [internal 
 ## S1 runtime and branch handoff
 
 QA owns only the dedicated Joe-TV Team QA simulator for this sprint, through the next baseline/final verification checkpoint. Other roles must not operate it. Role worktrees remain the same; listed S1/R2 branches have been verified. Design and Playback commits are integrated; QA baseline is integrated and the simulator is shut down between checkpoints. App implementation is in progress, with final combined verification pending. No real provider playback or release runtime is assigned.
+
+## Active candidate checkpoint
+
+Candidate `f394d4d356851092ae579051cff5a5a667d53cdb` passed fresh smoke and unsigned Debug build 7; QA UI acceptance is pending, with a cleanly reproduced guide-origin player focus problem under investigation. Home origin, Quick Switch origin preservation and removed-favorite fallback have passed sampled journeys. App/Playback are diagnosing without changing the frozen candidate. SecOps found no source-identified S1 fixture security blocker; see `sprints/S1-S2-secops.md` for precise isolation limits. R2 shortlist is integrated; no streams have been added or tested.
