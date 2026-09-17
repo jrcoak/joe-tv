@@ -74,6 +74,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var switchingPlaybackTargetID: String?
     @Published private(set) var playbackSwitchMessage: String?
 
+    let isNavigationFixture: Bool
     let client: SeasonsClient
     let veryLocalClient: VeryLocalClient
     private let epgProvider: EPGProviding?
@@ -159,59 +160,80 @@ final class AppModel: ObservableObject {
         liveNFLScoreProvider: LiveNFLScoreProviding = ESPNScoreboardClient(),
         defaults: UserDefaults = .standard
     ) {
+        #if DEBUG
+        let navigationFixture = ProcessInfo.processInfo.environment["JOE_TV_DEBUG_NAVIGATION"] == "1"
+        #else
+        let navigationFixture = false
+        #endif
+        var appDefaults = defaults
+        #if DEBUG
+        if navigationFixture {
+            let suite = "com.jrcoak.joetv.debug.navigation"
+            guard let fixtureDefaults = UserDefaults(suiteName: suite) else {
+                fatalError("Unable to create isolated navigation fixture preferences")
+            }
+            fixtureDefaults.removePersistentDomain(forName: suite)
+            appDefaults = fixtureDefaults
+        }
+        #endif
+        self.isNavigationFixture = navigationFixture
         self.client = client
         self.veryLocalClient = veryLocalClient
-        self.epgProvider = epgProvider
-        self.sportsScheduleProvider = epgProvider as? SportsScheduleProviding
-        self.sportsEventDetailProvider = epgProvider as? SportsEventDetailProviding
+        self.epgProvider = navigationFixture ? nil : epgProvider
+        self.sportsScheduleProvider = navigationFixture ? nil : epgProvider as? SportsScheduleProviding
+        self.sportsEventDetailProvider = navigationFixture ? nil : epgProvider as? SportsEventDetailProviding
         self.fantasyFootballProvider = fantasyFootballProvider
         self.liveNFLScoreProvider = liveNFLScoreProvider
-        self.defaults = defaults
-        LegacyScheduleCredentialCleanup.run(defaults: defaults)
-        if let stored = defaults.array(forKey: Self.disabledChannelsKey) as? [String] {
+        self.defaults = appDefaults
+        if !navigationFixture { LegacyScheduleCredentialCleanup.run(defaults: appDefaults) }
+        if let stored = appDefaults.array(forKey: Self.disabledChannelsKey) as? [String] {
             self.disabledChannelIDs = Set(stored)
         } else {
             self.disabledChannelIDs = Self.defaultDisabledChannelIDs
-            defaults.set(
+            appDefaults.set(
                 Array(Self.defaultDisabledChannelIDs).sorted(),
                 forKey: Self.disabledChannelsKey
             )
         }
-        if let stored = defaults.array(forKey: Self.favoriteChannelsKey) as? [String] {
+        if let stored = appDefaults.array(forKey: Self.favoriteChannelsKey) as? [String] {
             self.favoriteChannelIDs = Set(stored)
             self.hasStoredFavoriteChannelSelection = true
         } else {
             self.favoriteChannelIDs = []
             self.hasStoredFavoriteChannelSelection = false
         }
-        if let stored = defaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
+        if let stored = appDefaults.array(forKey: Self.enabledSportsCategoriesKey) as? [String] {
             let storedSelection = Set(stored)
             let normalized: Set<String>
-            if defaults.integer(forKey: Self.sportsCategoryTaxonomyVersionKey) < Self.currentSportsCategoryTaxonomyVersion {
+            if appDefaults.integer(forKey: Self.sportsCategoryTaxonomyVersionKey) < Self.currentSportsCategoryTaxonomyVersion {
                 normalized = SportsCategoryOption.migratingLegacySelection(storedSelection)
             } else {
                 normalized = storedSelection.intersection(Set(SportsCategoryOption.all.map(\.id)))
             }
             self.enabledSportsCategoryIDs = normalized
             if normalized != storedSelection {
-                defaults.set(Array(normalized).sorted(), forKey: Self.enabledSportsCategoriesKey)
+                appDefaults.set(Array(normalized).sorted(), forKey: Self.enabledSportsCategoriesKey)
             }
         } else {
             self.enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
         }
-        defaults.set(
+        appDefaults.set(
             Self.currentSportsCategoryTaxonomyVersion,
             forKey: Self.sportsCategoryTaxonomyVersionKey
         )
-        self.directionalChannelSurfingEnabled = defaults.bool(
+        self.directionalChannelSurfingEnabled = appDefaults.bool(
             forKey: Self.directionalChannelSurfingKey
         )
-        self.fantasyZoneEnabled = defaults.bool(forKey: Self.fantasyZoneEnabledKey)
-        self.fantasyUsername = defaults.string(forKey: Self.fantasyUsernameKey) ?? ""
-        self.fantasyLeagueID = defaults.string(forKey: Self.fantasyLeagueIDKey) ?? ""
-        self.fantasyUserID = defaults.string(forKey: Self.fantasyUserIDKey) ?? ""
+        self.fantasyZoneEnabled = appDefaults.bool(forKey: Self.fantasyZoneEnabledKey)
+        self.fantasyUsername = appDefaults.string(forKey: Self.fantasyUsernameKey) ?? ""
+        self.fantasyLeagueID = appDefaults.string(forKey: Self.fantasyLeagueIDKey) ?? ""
+        self.fantasyUserID = appDefaults.string(forKey: Self.fantasyUserIDKey) ?? ""
         adoptNewDefaultFavoritesIfNeeded()
         #if DEBUG
+        if navigationFixture {
+            configureNavigationDebugFixture()
+            return
+        }
         if let subtitleFixture = ProcessInfo.processInfo.environment["JOE_TV_DEBUG_CAPTIONS_URL"],
            let subtitleFixtureURL = URL(string: subtitleFixture) {
             configureCaptionsDebugFixture(url: subtitleFixtureURL)
@@ -595,6 +617,9 @@ final class AppModel: ObservableObject {
     }
 
     func loadSportsSchedule() async {
+        #if DEBUG
+        if isNavigationFixture { return }
+        #endif
         async let schedule: Void = refreshSportsSchedule()
         async let espnPlus: Void = loadESPNPlusSportsWindow()
         _ = await (schedule, espnPlus)
@@ -902,6 +927,9 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshEPG(for channels: [LiveChannel], around date: Date) async {
+        #if DEBUG
+        if isNavigationFixture { return }
+        #endif
         let requestID = UUID()
         epgRequestID = requestID
         guard !channels.isEmpty else {
@@ -988,6 +1016,9 @@ final class AppModel: ObservableObject {
     }
 
     func reload() async {
+        #if DEBUG
+        if isNavigationFixture { return }
+        #endif
         errorMessage = nil
         if isVeryLocalOnly {
             replaceAvailableChannels(with: veryLocalClient.loadChannels())
@@ -1271,6 +1302,99 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    private func configureNavigationDebugFixture() {
+        let now = Date()
+        let environment = ProcessInfo.processInfo.environment
+        let requestedDuration = Double(environment["JOE_TV_DEBUG_NAVIGATION_PROGRAM_SECONDS"] ?? "") ?? 3_300
+        let currentDuration = requestedDuration.isFinite ? min(max(requestedDuration, 1), 3_600) : 3_300
+        let request = PlaybackRequest(endpoint: "debug", controller: "debug", arguments: [])
+        let channels = (1...12).map { index in
+            LiveChannel(
+                id: "debug:navigation:\(index)",
+                name: String(format: "Fixture Channel %02d", index),
+                logoURL: nil,
+                playback: .request(request),
+                genre: index.isMultiple(of: 3) ? .sports : .news
+            )
+        }
+        availableLiveChannels = channels
+        liveChannels = channels
+        disabledChannelIDs = []
+        favoriteChannelIDs = environment["JOE_TV_DEBUG_EMPTY_FAVORITES"] == "1"
+            ? [] : Set(channels.prefix(8).map(\.id))
+        hasStoredFavoriteChannelSelection = true
+        persistFavoriteChannels()
+        fantasyZoneEnabled = false
+        enabledSportsCategoryIDs = Self.defaultSportsCategoryIDs
+        channelState = .loaded
+        eventState = .loaded
+        sportsScheduleState = .loaded
+        espnPlusState = .loaded
+        guideTimeAnchor = now.addingTimeInterval(-1_800)
+        var programsByStation: [String: [EPGProgram]] = [:]
+        for (index, channel) in channels.enumerated() {
+            let station = "fixture-station-\(index + 1)"
+            channelStationMappings[channel.id] = station
+            let intervals: [(String, TimeInterval, TimeInterval)] = [
+                ("Expired", -1_800, -300),
+                ("Current", -300, currentDuration),
+                ("Future", currentDuration, currentDuration + 3_600),
+                ("Later", currentDuration + 3_600, currentDuration + 7_200)
+            ]
+            programsByStation[station] = intervals.map { name, start, end in
+                EPGProgram(
+                    id: "fixture-program-\(index + 1)-\(name.lowercased())",
+                    stationID: station,
+                    title: index == 11
+                        ? "\(name) Program 12: An Extended Championship Broadcast with Interviews, Analysis and Highlights from Around the League"
+                        : "\(name) Program \(index + 1)",
+                    start: now.addingTimeInterval(start),
+                    end: now.addingTimeInterval(end),
+                    synopsis: index == 0 ? nil : (index == 11
+                        ? "Local navigation fixture with a long synopsis. Follow the teams through a full evening of coverage, detailed interviews, analysis from the studio and stories from the venue. This text exercises wrapping alongside the program title, scheduled time, both actions and the explanation that watching tunes the channel's current output. No media or provider request is made."
+                        : "Local navigation fixture. No media or provider request is made."),
+                    category: nil,
+                    imageURL: nil
+                )
+            }
+        }
+        epgState = .loaded(EPGGuideWindow(
+            start: guideTimeAnchor,
+            end: now.addingTimeInterval(10_800),
+            programsByStationID: programsByStation,
+            fetchedAt: now
+        ))
+        let events = (1...8).map { index in
+            let event = SportsScheduleEvent(
+                eventID: "fixture-game-\(index)", title: "Fixture Game \(index)",
+                sport: "Baseball", leagueID: "mlb", league: "MLB",
+                startsAt: now.addingTimeInterval(-1_800), endsAt: now.addingTimeInterval(7_200),
+                status: "Live", venue: nil, country: nil,
+                homeTeamID: nil, homeTeam: "Home \(index)", homeTeamLogoURL: nil,
+                awayTeamID: nil, awayTeam: "Away \(index)", awayTeamLogoURL: nil,
+                homeScore: nil, awayScore: nil, thumbnailURL: nil,
+                sourceDate: nil, sourceTime: nil, broadcasts: []
+            )
+            return MediaItem(
+                id: "debug:navigation-game:\(index)", title: event.title,
+                subtitle: "Offline fixture", imageURL: nil, categoryID: "mlb",
+                playbackOptions: [
+                    MediaItem.PlaybackOption(id: "home", title: "Home", playback: .request(request)),
+                    MediaItem.PlaybackOption(id: "away", title: "Away", playback: .request(request))
+                ], sportsEvent: event
+            )
+        }
+        categories = [CatalogCategory(id: "mlb", title: "MLB", symbol: "baseball.fill", items: events)]
+        playbackCategories = categories
+        rebuildConsolidatedSportsItems()
+        switch environment["JOE_TV_DEBUG_DESTINATION"] {
+        case "guide": destination = .liveTV
+        case "sports": destination = .sports
+        default: destination = .home
+        }
+        screen = .catalog
+    }
+
     private func configureCaptionsDebugFixture(url: URL) {
         let channel = LiveChannel(
             id: "debug:captions",
@@ -1786,12 +1910,28 @@ final class AppModel: ObservableObject {
     }
 
     private func applyChannelPreferences() {
-        liveChannels = availableLiveChannels.filter { !disabledChannelIDs.contains($0.id) }
-        if let lastFocusedLiveID {
-            let channelID = lastFocusedLiveID.replacingOccurrences(of: "channel:", with: "")
-            if !liveChannels.contains(where: { $0.id == channelID }) {
-                self.lastFocusedLiveID = liveChannels.first.map { "channel:\($0.id)" }
+        let previousChannels = liveChannels
+        let bookmark = lastFocusedLiveID
+        let bookmarkedChannelID: String? = {
+            guard let bookmark else { return nil }
+            if bookmark.hasPrefix("channel:") {
+                return String(bookmark.dropFirst("channel:".count))
             }
+            guard bookmark.hasPrefix("program:") else { return nil }
+            let programID = String(bookmark.dropFirst("program:".count))
+            return previousChannels.first { channel in
+                guard let station = channelStationMappings[channel.id] else { return false }
+                return usableGuideWindow?.programsByStationID[station]?.contains(where: { $0.id == programID }) == true
+            }?.id
+        }()
+        liveChannels = availableLiveChannels.filter { !disabledChannelIDs.contains($0.id) }
+        guard bookmark != nil else { return }
+        if let bookmarkedChannelID, liveChannels.contains(where: { $0.id == bookmarkedChannelID }) {
+            // A program bookmark is already valid; do not compare it to channel IDs.
+            return
         }
+        let previousIndex = previousChannels.firstIndex(where: { $0.id == bookmarkedChannelID }) ?? 0
+        lastFocusedLiveID = liveChannels.isEmpty ? nil
+            : "channel:\(liveChannels[min(previousIndex, liveChannels.count - 1)].id)"
     }
 }

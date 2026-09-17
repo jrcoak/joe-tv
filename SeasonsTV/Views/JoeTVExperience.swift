@@ -6,8 +6,14 @@ import SwiftUI
 struct JoeTVHomeView: View {
     @EnvironmentObject private var model: AppModel
     @State private var lastFocusedFavoriteID: String?
+    @State private var playbackOriginID: String?
+    @State private var playbackOriginIndex = 0
     @FocusState private var focusedID: String?
     let entryFocusRequest: Int
+    let playbackReturnFocusRequest: Int
+    let favoritesReturnFocusRequest: Int
+    let onChooseFavorites: () -> Void
+    let onOpenGuide: () -> Void
     let onFocusNavigation: () -> Void
 
     private var guideWindow: EPGGuideWindow? { model.epgState.usableWindow }
@@ -45,8 +51,12 @@ struct JoeTVHomeView: View {
             }
         }
         .background(SeasonTheme.background)
-        .onAppear { restoreFocus() }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
+        .onChange(of: playbackReturnFocusRequest) { _, _ in restorePlaybackOrigin() }
+        .onChange(of: favoritesReturnFocusRequest) { _, _ in
+            // The CTA disappears when the first enabled favorite is chosen.
+            focusedID = model.favoriteLiveChannels.first.map { "channel:\($0.id)" } ?? "choose-favorites"
+        }
         .onChange(of: focusedID) { _, identifier in
             guard let identifier, identifier.hasPrefix("channel:") else { return }
             lastFocusedFavoriteID = String(identifier.dropFirst("channel:".count))
@@ -79,11 +89,12 @@ struct JoeTVHomeView: View {
                 }
 
                 HStack(spacing: 14) {
-                    Button { Task { await model.play(channel) } } label: {
+                    Button { play(channel, origin: "hero-watch") } label: {
                         Label("Watch live", systemImage: "play.fill")
                     }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                     .focused($focusedID, equals: "hero-watch")
+                    .accessibilityIdentifier("home.watch")
                     .onKeyPress(.upArrow) {
                         onFocusNavigation()
                         return .handled
@@ -94,7 +105,7 @@ struct JoeTVHomeView: View {
                     }
                     .onMoveCommand(perform: handleHeroMove)
 
-                    Button { model.destination = .liveTV } label: {
+                    Button(action: onOpenGuide) {
                         Label("Open guide", systemImage: "rectangle.grid.1x2")
                     }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: false))
@@ -125,7 +136,7 @@ struct JoeTVHomeView: View {
                 Text("Your night starts here.")
                     .font(.system(size: 68, weight: .regular, design: .serif))
                     .foregroundStyle(SeasonTheme.paper)
-                Button { model.destination = .liveTV } label: {
+                Button(action: onOpenGuide) {
                     Label("Open guide", systemImage: "rectangle.grid.1x2")
                 }
                 .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
@@ -162,13 +173,25 @@ struct JoeTVHomeView: View {
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(SeasonTheme.secondaryText)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("No favorite channels yet")
+                        Text("Your favorites appear here")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(SeasonTheme.paper)
-                        Text("Choose favorites in Settings → Channels.")
+                        Text("Choose channels for quick access on Home.")
                             .font(.system(size: 13))
                             .foregroundStyle(SeasonTheme.secondaryText)
                     }
+                    Spacer()
+                    Button(action: onChooseFavorites) {
+                        Label("Choose Favorites", systemImage: "star")
+                    }
+                    .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
+                    .focused($focusedID, equals: "choose-favorites")
+                    .accessibilityIdentifier("home.chooseFavorites")
+                    .onKeyPress(.upArrow) {
+                        focusPrimaryHero()
+                        return .handled
+                    }
+                    .onMoveCommand { if $0 == .up { focusPrimaryHero() } }
                 }
                 .padding(.horizontal, 18)
                 .frame(height: 128)
@@ -180,7 +203,7 @@ struct JoeTVHomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(favoriteChannels) { channel in
-                            Button { Task { await model.play(channel) } } label: {
+                            Button { play(channel, origin: "channel:\(channel.id)") } label: {
                                 JoeTVNowCard(
                                     channel: channel,
                                     program: nowPlaying(on: channel, at: date),
@@ -190,6 +213,7 @@ struct JoeTVHomeView: View {
                             }
                             .buttonStyle(JoeTVCardButtonStyle())
                             .focused($focusedID, equals: "channel:\(channel.id)")
+                            .accessibilityIdentifier("home.favorite.\(channel.id)")
                             .onKeyPress(.upArrow) {
                                 focusPrimaryHero()
                                 return .handled
@@ -248,7 +272,10 @@ struct JoeTVHomeView: View {
 
     private func focusFavoriteRail() {
         let favorites = model.favoriteLiveChannels
-        guard !favorites.isEmpty else { return }
+        guard !favorites.isEmpty else {
+            focusedID = "choose-favorites"
+            return
+        }
         let targetID = lastFocusedFavoriteID.flatMap { previousID in
             favorites.contains(where: { $0.id == previousID }) ? previousID : nil
         } ?? favorites[0].id
@@ -257,6 +284,31 @@ struct JoeTVHomeView: View {
 
     private func restoreFocus() {
         DispatchQueue.main.async {
+            focusPrimaryHero()
+        }
+    }
+
+    private func play(_ channel: LiveChannel, origin: String) {
+        playbackOriginID = origin
+        playbackOriginIndex = model.favoriteLiveChannels.firstIndex(where: { $0.id == channel.id }) ?? 0
+        Task { await model.play(channel) }
+    }
+
+    private func restorePlaybackOrigin() {
+        guard model.playbackSession == nil else { return }
+        defer { playbackOriginID = nil }
+        if playbackOriginID == "hero-watch" {
+            focusPrimaryHero()
+        } else if let origin = playbackOriginID, origin.hasPrefix("channel:") {
+            let favorites = model.favoriteLiveChannels
+            if favorites.contains(where: { "channel:\($0.id)" == origin }) {
+                focusedID = origin
+            } else if !favorites.isEmpty {
+                focusedID = "channel:\(favorites[min(playbackOriginIndex, favorites.count - 1)].id)"
+            } else {
+                focusedID = "choose-favorites"
+            }
+        } else {
             focusPrimaryHero()
         }
     }
@@ -274,9 +326,18 @@ struct JoeTVGuideView: View {
     @State private var previewChannelID: String?
     @State private var previewState: JoeTVPreviewState = .artwork
     @State private var previewTask: Task<Void, Never>?
+    @State private var returnOrigin: GuideOrigin?
+    @State private var isLaunchingPlayback = false
     @FocusState private var focusedID: String?
     let entryFocusRequest: Int
+    let playbackReturnFocusRequest: Int
     let onFocusNavigation: () -> Void
+
+    private struct GuideOrigin {
+        let channelID: String
+        let programID: String?
+        let rowIndex: Int
+    }
 
     private enum GuideFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -350,11 +411,13 @@ struct JoeTVGuideView: View {
                 }
 
                 if channels.isEmpty {
-                    StatePanel(
+                    JoeTVEmptyState(
                         title: "No channels in this view",
                         message: "Choose another guide filter or enable channels in Settings.",
                         symbol: "tv.slash",
-                        actionTitle: "Show all"
+                        actionTitle: "Show all",
+                        focusedID: $focusedID,
+                        focusID: "guide-empty"
                     ) {
                         filter = .all
                         resetSelection()
@@ -368,13 +431,10 @@ struct JoeTVGuideView: View {
                         focusedID: $focusedID,
                         focusFilters: focusCurrentFilter,
                         selectionChanged: updateSelection,
-                        programPressed: { channel, program in
-                            updateSelection(channel, program)
-                            programActions = JoeTVProgramSelection(channel: channel, program: program)
-                        },
+                        programPressed: activateProgram,
                         channelPressed: { channel in
-                            stopPreview()
-                            Task { await model.play(channel) }
+                            rememberOrigin(channel, program: nil)
+                            playChannel(channel)
                         }
                     )
                 }
@@ -384,15 +444,17 @@ struct JoeTVGuideView: View {
             .padding(.bottom, 22)
         }
         .background(SeasonTheme.background)
-        .sheet(item: $programActions) { selection in
+        .sheet(item: $programActions, onDismiss: {
+            if !isLaunchingPlayback, model.playbackSession == nil { restoreOrigin() }
+        }) { selection in
             JoeTVProgramActionsView(selection: selection) {
+                isLaunchingPlayback = true
                 programActions = nil
-                stopPreview()
-                Task { await model.play(selection.channel) }
+                playChannel(selection.channel)
             }
         }
-        .onAppear { restoreFocus() }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
+        .onChange(of: playbackReturnFocusRequest) { _, _ in restoreOrigin() }
         .onChange(of: focusedID) { _, identifier in
             guard let identifier else { return }
             if let match = guideSelection(for: identifier) {
@@ -431,13 +493,13 @@ struct JoeTVGuideView: View {
                     Text("\(program.start.formatted(date: .omitted, time: .shortened))–\(program.end.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: 15, weight: .medium, design: .monospaced))
                         .foregroundStyle(SeasonTheme.secondaryText)
-                    Text(program.synopsis?.isEmpty == false ? program.synopsis! : "Live programming on \(selectedChannel?.name ?? "this channel").")
+                    Text(program.synopsis?.isEmpty == false ? program.synopsis! : "Programming on \(selectedChannel?.name ?? "this channel").")
                         .font(.system(size: 16))
                         .foregroundStyle(SeasonTheme.secondaryText)
                         .lineLimit(2)
                         .frame(maxWidth: 760, alignment: .leading)
                 } else {
-                    Text("Choose a channel or program below. Moving focus previews; Select opens the program.")
+                    Text("Select a current program or channel to watch live. Other programs open details.")
                         .font(.system(size: 16))
                         .foregroundStyle(SeasonTheme.secondaryText)
                 }
@@ -488,7 +550,11 @@ struct JoeTVGuideView: View {
     private func resetSelection() {
         selectedChannelID = channels.first?.id
         selectedProgramID = nil
-        if let channel = channels.first { schedulePreview(for: channel) }
+        if let channel = channels.first {
+            schedulePreview(for: channel)
+        } else {
+            stopPreview()
+        }
     }
 
     private func restoreFocus() {
@@ -503,7 +569,64 @@ struct JoeTVGuideView: View {
             let program = programs(for: channel).first(where: { $0.contains(Date()) }) ?? programs(for: channel).first
             updateSelection(channel, program)
             DispatchQueue.main.async { focusCurrentFilter() }
+        } else {
+            focusCurrentFilter()
         }
+    }
+
+    private func rememberOrigin(_ channel: LiveChannel, program: EPGProgram?) {
+        returnOrigin = GuideOrigin(
+            channelID: channel.id,
+            programID: program?.id,
+            rowIndex: channels.firstIndex(where: { $0.id == channel.id }) ?? 0
+        )
+        updateSelection(channel, program)
+    }
+
+    private func activateProgram(_ channel: LiveChannel, _ program: EPGProgram) {
+        rememberOrigin(channel, program: program)
+        // Decide at activation, not at the last minute-based render.
+        if program.contains(Date()) {
+            playChannel(channel)
+        } else {
+            stopPreview()
+            programActions = JoeTVProgramSelection(channel: channel, program: program)
+        }
+    }
+
+    private func playChannel(_ channel: LiveChannel) {
+        isLaunchingPlayback = true
+        stopPreview()
+        Task {
+            await model.play(channel)
+            isLaunchingPlayback = false
+            if model.playbackSession == nil { restoreOrigin() }
+        }
+    }
+
+    private func restoreOrigin() {
+        guard model.playbackSession == nil, !isLaunchingPlayback else { return }
+        guard let origin = returnOrigin else {
+            restoreFocus()
+            return
+        }
+        guard !channels.isEmpty else {
+            stopPreview()
+            focusedID = "guide-empty"
+            return
+        }
+        let channel = channels.first(where: { $0.id == origin.channelID })
+            ?? channels[min(origin.rowIndex, channels.count - 1)]
+        let windowStart = joeTVGuideWindowStart(anchor: model.guideTimeAnchor, window: guideWindow)
+        let visible = programs(for: channel).filter {
+            $0.end > windowStart && $0.start < windowStart.addingTimeInterval(3 * 3_600)
+        }
+        // If the program disappeared, the same channel row is the closest
+        // surviving context; do not silently select a different program.
+        let program = visible.first(where: { $0.id == origin.programID })
+        updateSelection(channel, program)
+        focusedID = program.map { "program:\($0.id)" } ?? "channel:\(channel.id)"
+        schedulePreview(for: channel)
     }
 
     private func filterFocusID(_ filter: GuideFilter) -> String {
@@ -533,13 +656,15 @@ struct JoeTVGuideView: View {
     }
 
     private func schedulePreview(for channel: LiveChannel) {
+        guard model.playbackSession == nil, !isLaunchingPlayback, programActions == nil else { return }
         guard previewChannelID != channel.id else { return }
         previewTask?.cancel()
         previewChannelID = channel.id
         previewState = .artwork
         previewTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(1_100))
-            guard !Task.isCancelled, previewChannelID == channel.id else { return }
+            guard !Task.isCancelled, previewChannelID == channel.id,
+                  model.playbackSession == nil, !isLaunchingPlayback, programActions == nil else { return }
             previewSession?.player.pause()
             previewSession = nil
             previewState = .loading
@@ -586,6 +711,13 @@ struct JoeTVGuideView: View {
     }
 }
 
+private func joeTVGuideWindowStart(anchor: Date, window: EPGGuideWindow?) -> Date {
+    let reference = max(anchor, window?.start ?? anchor)
+    let calendar = Calendar.current
+    let minute = calendar.component(.minute, from: reference)
+    return calendar.date(byAdding: .minute, value: -(minute % 30), to: reference) ?? reference
+}
+
 private struct JoeTVGuideGrid: View {
     let channels: [LiveChannel]
     let guideWindow: EPGGuideWindow?
@@ -603,10 +735,7 @@ private struct JoeTVGuideGrid: View {
     private let pointsPerMinute: CGFloat = 8
 
     private var windowStart: Date {
-        let reference = max(anchor, guideWindow?.start ?? anchor)
-        let calendar = Calendar.current
-        let minute = calendar.component(.minute, from: reference)
-        return calendar.date(byAdding: .minute, value: -(minute % 30), to: reference) ?? reference
+        joeTVGuideWindowStart(anchor: anchor, window: guideWindow)
     }
 
     private var windowEnd: Date { windowStart.addingTimeInterval(3 * 3_600) }
@@ -647,6 +776,7 @@ private struct JoeTVGuideGrid: View {
                         }
                         .buttonStyle(JoeTVGuideButtonStyle())
                         .focused($focusedID, equals: "channel:\(channel.id)")
+                        .accessibilityIdentifier("guide.channel.\(channel.id)")
                         .id("guide-row:\(channel.id)")
                         .onKeyPress(.upArrow) {
                             guard index == 0 else { return .ignored }
@@ -729,6 +859,9 @@ private struct JoeTVGuideGrid: View {
                     }
                     .buttonStyle(JoeTVGuideButtonStyle())
                     .focused($focusedID, equals: "program:\(program.id)")
+                    .accessibilityLabel("\(channel.name), \(program.title), \(program.start.formatted(date: .omitted, time: .shortened)) to \(program.end.formatted(date: .omitted, time: .shortened))")
+                    .accessibilityHint(program.contains(Date()) ? "Watch channel now" : "Show program details")
+                    .accessibilityIdentifier("guide.program.\(program.id)")
                     .onKeyPress(.upArrow) {
                         guard isFirstRow else { return .ignored }
                         focusFilters()
@@ -807,8 +940,12 @@ struct JoeTVSportsView: View {
     @State private var showsFilters = false
     @State private var showsFantasyZone = ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_ZONE"] == "1"
     @State private var showsFantasySettings = false
+    @State private var returnFocusID: String?
+    @State private var returnItemIndex = 0
+    @State private var isLaunchingPlayback = false
     @FocusState private var focusedID: String?
     let entryFocusRequest: Int
+    let playbackReturnFocusRequest: Int
     let onFocusNavigation: () -> Void
 
     private var items: [MediaItem] { model.consolidatedSportsItems }
@@ -900,22 +1037,19 @@ struct JoeTVSportsView: View {
         .sheet(isPresented: $showsFantasySettings) {
             FantasyZoneSettingsView()
         }
-        .sheet(item: $broadcastItem) { item in
+        .sheet(item: $broadcastItem, onDismiss: {
+            if !isLaunchingPlayback, model.playbackSession == nil { restoreOrigin() }
+        }) { item in
             JoeTVBroadcastSelector(item: item) { option in
+                isLaunchingPlayback = true
                 broadcastItem = nil
-                Task {
-                    if showsFantasyZone {
-                        await model.playFromFantasyZone(item, option: option)
-                    } else {
-                        await model.play(item, option: option)
-                    }
-                }
+                play(item, option: option)
             }
         }
         .onAppear {
+            if model.isNavigationFixture { showsFantasyZone = false }
             chooseUsefulScope(at: Date())
             reconcileSelection(at: Date())
-            restoreFocus()
             model.prefetchSportsEventDetails(for: items)
             if model.sportsScheduleState == .idle || model.espnPlusState == .idle {
                 Task { await model.loadSportsSchedule() }
@@ -941,6 +1075,7 @@ struct JoeTVSportsView: View {
             if !enabled { showsFantasyZone = false }
         }
         .onChange(of: entryFocusRequest) { _, _ in restoreFocus() }
+        .onChange(of: playbackReturnFocusRequest) { _, _ in restoreOrigin() }
         .onExitCommand {
             guard !model.shouldSuppressBrowseBackCommand else { return }
             onFocusNavigation()
@@ -1259,7 +1394,14 @@ struct JoeTVSportsView: View {
                 HStack(spacing: 10) {
                     ForEach(Array(channels.enumerated()), id: \.element.id) { _, channel in
                         Button {
-                            Task { await model.playFromFantasyZone(channel) }
+                            returnFocusID = "fantasy-stream:\(channel.id)"
+                            returnItemIndex = channels.firstIndex(where: { $0.id == channel.id }) ?? 0
+                            isLaunchingPlayback = true
+                            Task {
+                                await model.playFromFantasyZone(channel)
+                                isLaunchingPlayback = false
+                                if model.playbackSession == nil { restoreOrigin() }
+                            }
                         } label: {
                             JoeTVFantasyStreamCard(
                                 channel: channel,
@@ -1288,11 +1430,13 @@ struct JoeTVSportsView: View {
     private func guideContent(at date: Date, items displayed: [MediaItem]) -> some View {
         if displayed.isEmpty {
             if model.enabledSportsCategoryIDs.isEmpty {
-                StatePanel(
+                JoeTVEmptyState(
                     title: "No sports selected",
                     message: "Choose one or more sports to build your event guide.",
                     symbol: "line.3.horizontal.decrease.circle",
-                    actionTitle: "Choose Sports"
+                    actionTitle: "Choose Sports",
+                    focusedID: $focusedID,
+                    focusID: "sports-empty"
                 ) { showsFilters = true }
             } else if model.sportsScheduleState == .loading || model.espnPlusState == .loading {
                 VStack(spacing: 18) {
@@ -1303,13 +1447,15 @@ struct JoeTVSportsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                StatePanel(
+                JoeTVEmptyState(
                     title: scope == .live ? "Nothing is live right now" : "No upcoming events",
                     message: scope == .live
                         ? "Upcoming includes the rest of today and tomorrow."
                         : "Joe-TV could not find a scheduled event for the selected sports.",
                     symbol: scope == .live ? "clock" : "calendar.badge.clock",
-                    actionTitle: scope == .live ? "Show Upcoming" : "Refresh"
+                    actionTitle: scope == .live ? "Show Upcoming" : "Refresh",
+                    focusedID: $focusedID,
+                    focusID: "sports-empty"
                 ) {
                     if scope == .live {
                         didChooseScope = true
@@ -1342,6 +1488,7 @@ struct JoeTVSportsView: View {
                             }
                             .buttonStyle(JoeTVCardButtonStyle())
                             .focused($focusedID, equals: "event:\(item.id)")
+                            .accessibilityIdentifier("sports.event.\(item.id)")
                             .onKeyPress(.upArrow) {
                                 guard index < columns.count else { return .ignored }
                                 focusCurrentScope()
@@ -1440,6 +1587,10 @@ struct JoeTVSportsView: View {
     private func activate(_ item: MediaItem) {
         selectedItemID = item.id
         guard item.sportsPlaybackAvailable(at: Date()) else { return }
+        didChooseScope = true
+        returnFocusID = "event:\(item.id)"
+        let displayed = showsFantasyZone ? fantasyNFLDisplayItems(at: Date()) : displayedItems(at: Date())
+        returnItemIndex = displayed.firstIndex(where: { $0.id == item.id }) ?? 0
         if item.shouldPresentSportsPlaybackSelector {
             broadcastItem = item
         } else if item.isPlayable {
@@ -1449,12 +1600,46 @@ struct JoeTVSportsView: View {
 
     private func playBest(_ item: MediaItem) {
         guard item.sportsPlaybackAvailable(at: Date()) else { return }
+        play(item, option: item.bestPlayableOption)
+    }
+
+    private func play(_ item: MediaItem, option: MediaItem.PlaybackOption?) {
+        isLaunchingPlayback = true
+        let fantasyPresentation = showsFantasyZone
         Task {
-            if showsFantasyZone {
-                await model.playFromFantasyZone(item, option: item.bestPlayableOption)
+            if fantasyPresentation {
+                await model.playFromFantasyZone(item, option: option)
             } else {
-                await model.play(item, option: item.bestPlayableOption)
+                await model.play(item, option: option)
             }
+            isLaunchingPlayback = false
+            if model.playbackSession == nil { restoreOrigin() }
+        }
+    }
+
+    private func restoreOrigin() {
+        guard model.playbackSession == nil, !isLaunchingPlayback else { return }
+        if let origin = returnFocusID, origin.hasPrefix("fantasy-stream:"), showsFantasyZone {
+            let channels = model.fantasyWatchChannels
+            if channels.contains(where: { "fantasy-stream:\($0.id)" == origin }) {
+                focusedID = origin
+                return
+            }
+            if !channels.isEmpty {
+                focusedID = "fantasy-stream:\(channels[min(returnItemIndex, channels.count - 1)].id)"
+                return
+            }
+        }
+        let displayed = showsFantasyZone ? fantasyNFLDisplayItems(at: Date()) : displayedItems(at: Date())
+        if let origin = returnFocusID, !displayed.isEmpty {
+            let item = displayed.first(where: { "event:\($0.id)" == origin })
+                ?? displayed[min(returnItemIndex, displayed.count - 1)]
+            selectedItemID = item.id
+            focusedID = "event:\(item.id)"
+        } else if !showsFantasyZone, displayed.isEmpty {
+            focusedID = "sports-empty"
+        } else {
+            focusCurrentScope()
         }
     }
 
@@ -2037,6 +2222,36 @@ private struct JoeTVESPNPlusDatePicker: View {
 
 // MARK: - Layers and reusable components
 
+/// Same empty-state presentation as StatePanel, with an explicit return target.
+private struct JoeTVEmptyState: View {
+    let title: String
+    let message: String
+    let symbol: String
+    let actionTitle: String
+    @FocusState.Binding var focusedID: String?
+    let focusID: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: symbol)
+                .font(.system(size: 48))
+                .foregroundStyle(SeasonTheme.accent)
+            Text(title).font(.title2.bold()).foregroundStyle(SeasonTheme.paper)
+            Text(message)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button(actionTitle, action: action)
+                .buttonStyle(.borderedProminent)
+                .focused($focusedID, equals: focusID)
+                .accessibilityIdentifier(focusID)
+        }
+        .padding(44)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 private struct JoeTVProgramSelection: Identifiable {
     let channel: LiveChannel
     let program: EPGProgram
@@ -2062,6 +2277,8 @@ private struct JoeTVProgramActionsView: View {
             Text(selection.program.title)
                 .font(.system(size: 46, weight: .regular, design: .serif))
                 .foregroundStyle(SeasonTheme.paper)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
             Text("\(selection.program.start.formatted(date: .abbreviated, time: .shortened))–\(selection.program.end.formatted(date: .omitted, time: .shortened))")
                 .foregroundStyle(SeasonTheme.secondaryText)
             if let synopsis = selection.program.synopsis, !synopsis.isEmpty {
@@ -2071,15 +2288,19 @@ private struct JoeTVProgramActionsView: View {
                     .lineLimit(4)
             }
             HStack(spacing: 14) {
-                Button(action: watch) { Label("Watch channel", systemImage: "play.fill") }
+                Button(action: watch) { Label("Watch channel now", systemImage: "play.fill") }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: true))
                     .focused($focused)
+                    .accessibilityIdentifier("guide.details.watchNow")
                 Button("Close") { dismiss() }
                     .buttonStyle(JoeTVActionButtonStyle(isPrimary: false))
             }
+            Text("Plays what is on this channel now.")
+                .font(.callout)
+                .foregroundStyle(SeasonTheme.secondaryText)
         }
         .padding(48)
-        .frame(width: 960, height: 530, alignment: .leading)
+        .frame(width: 960, height: 680, alignment: .leading)
         .background(SeasonTheme.background)
         .onAppear { focused = true }
     }

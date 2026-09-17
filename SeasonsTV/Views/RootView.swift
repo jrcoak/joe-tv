@@ -14,6 +14,8 @@ struct RootView: View {
                 LoginView()
             case .catalog:
                 CatalogView()
+                    .disabled(model.playbackSession != nil)
+                    .accessibilityHidden(model.playbackSession != nil)
             }
 
             if model.isWorking {
@@ -130,6 +132,10 @@ private struct CatalogView: View {
     @State private var homeEntryFocusRequest = 0
     @State private var liveTVEntryFocusRequest = 0
     @State private var sportsEntryFocusRequest = 0
+    @State private var playbackReturnFocusRequest = 0
+    @State private var homeFavoritesReturnFocusRequest = 0
+    @State private var channelSettingsFromHome = false
+    @State private var didSetInitialFocus = false
     @FocusState private var focusedDestination: AppModel.Destination?
     @FocusState private var moreIsFocused: Bool
 
@@ -145,16 +151,28 @@ private struct CatalogView: View {
                     case .home:
                         JoeTVHomeView(
                             entryFocusRequest: homeEntryFocusRequest,
+                            playbackReturnFocusRequest: playbackReturnFocusRequest,
+                            favoritesReturnFocusRequest: homeFavoritesReturnFocusRequest,
+                            onChooseFavorites: {
+                                channelSettingsFromHome = true
+                                showsChannelSettings = true
+                            },
+                            onOpenGuide: {
+                                model.destination = .liveTV
+                                DispatchQueue.main.async { liveTVEntryFocusRequest += 1 }
+                            },
                             onFocusNavigation: focusCurrentDestination
                         )
                     case .liveTV:
                         JoeTVGuideView(
                             entryFocusRequest: liveTVEntryFocusRequest,
+                            playbackReturnFocusRequest: playbackReturnFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
                     case .sports:
                         JoeTVSportsView(
                             entryFocusRequest: sportsEntryFocusRequest,
+                            playbackReturnFocusRequest: playbackReturnFocusRequest,
                             onFocusNavigation: focusCurrentDestination
                         )
                     }
@@ -182,8 +200,31 @@ private struct CatalogView: View {
         .sheet(isPresented: $showsFantasyZoneSettings) {
             FantasyZoneSettingsView()
         }
-        .sheet(isPresented: $showsChannelSettings) {
+        .sheet(isPresented: $showsChannelSettings, onDismiss: {
+            if channelSettingsFromHome, model.destination == .home {
+                homeFavoritesReturnFocusRequest += 1
+            } else {
+                moreIsFocused = true
+            }
+            channelSettingsFromHome = false
+        }) {
             ChannelSettingsView()
+        }
+        .onAppear {
+            guard !didSetInitialFocus else { return }
+            didSetInitialFocus = true
+            if model.playbackSession == nil { focusCurrentDestination() }
+        }
+        .onChange(of: model.playbackSession?.id) { previous, current in
+            guard previous != nil, current == nil else { return }
+            // Distinct from entering content from the top bar: return to the
+            // invoking item, not each screen's normal entry control.
+            DispatchQueue.main.async {
+                guard model.playbackSession == nil, case .catalog = model.screen else { return }
+                focusedDestination = nil
+                moreIsFocused = false
+                playbackReturnFocusRequest += 1
+            }
         }
     }
 
@@ -217,6 +258,7 @@ private struct CatalogView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .disabled(model.isNavigationFixture)
                 if !model.isVeryLocalOnly {
                     Button {
                         Task {
@@ -226,12 +268,14 @@ private struct CatalogView: View {
                     } label: {
                         Label("Refresh TV & Sports Data", systemImage: "calendar.badge.clock")
                     }
+                    .disabled(model.isNavigationFixture)
                     Button { showsSportsCategorySettings = true } label: {
                         Label("Sports Filters", systemImage: "slider.horizontal.3")
                     }
                     Button { showsFantasyZoneSettings = true } label: {
                         Label("Fantasy Zone", systemImage: "trophy.fill")
                     }
+                    .disabled(model.isNavigationFixture)
                 }
                 Button { showsChannelSettings = true } label: {
                     Label("Channels", systemImage: "tv.and.mediabox")
@@ -248,6 +292,7 @@ private struct CatalogView: View {
                         systemImage: "rectangle.portrait.and.arrow.right"
                     )
                 }
+                .disabled(model.isNavigationFixture)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.title3.weight(.semibold))
