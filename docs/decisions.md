@@ -32,4 +32,6 @@
 | TEAM-027 | Fix false live-game classification and deliver a properly configured normal simulator build; insufficient timing is unknown, future/ended windows override generic labels, and playable feeds alone are not live-game evidence. | Joe: “ok. fix it though….” S4 implemented and installed with independent checks and normal Sports evidence. |
 | TEAM-028 | Repair the existing Sports filter sheet with bounded explicit typography, uniform tiles and clear focus/scroll regions; preserve category selection and existing navigation. | Joe’s September 17 11:55 screenshot and “the filter UI went wonky.” S5 scoped to the observed defect. |
 
+| TEAM-029 | Merge the verified team work into main, push to GitHub, and upload version 1.0 build 8 to internal TestFlight using the existing Release configuration and signing. PM owns this release. | Joe explicitly requested main push and a new TestFlight build after accepting the simulator fixes. This supersedes earlier no-release boundaries for this delivery only; physical-device and remaining UI coverage limits remain documented. |
+
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.
