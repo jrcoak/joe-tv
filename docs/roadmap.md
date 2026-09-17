@@ -1,9 +1,9 @@
 # Joe-TV improvement roadmap
 
-Status: **S1 ordinary watching/returning is active** under TEAM-4. Remaining packages are future candidates.
+Status: **S1/S2 implementation assembled; offline checks passed; final UI verification blocked by locked Mac.** TEAM-4 with TEAM-019/021/022 governs these cycles. Remaining packages are future candidates.
 Joe's priority is a polished, responsive app with intuitive navigation and fewer heavy click paths. Preserve its live-TV/sports identity and existing visual direction.
 
-The team recommends starting with **ordinary watching and returning**: repair the observed Back/focus problems, simplify the current-program watch path, and measure responsiveness. A sidebar and favorite-team Home remain valuable later experiments. Joe has authorized continued progress; the small first sprint is now assigned in docs/assignments/S1.md.
+S1 implements **ordinary watching and returning**; S2 adds Channels readability, validated guide/sports caches and measured timestamp reuse. Home/Sports/favorites and staged Fantasy returns passed on the original S1 candidate. Its guide input failure has a preview-only correction that builds but awaits UI verification; the Mac locked before that comparison. A sidebar and favorite-team Home remain later experiments. See the current cycle summary in `sprints/quality-cycles.md`.
 
 ## What the competitive research changes
 
@@ -30,9 +30,9 @@ Research covers **Netflix, Disney+, YouTube TV, Plex, Hulu + Live TV and Fubo**,
 
 All benefits above are expectations until validated. Full recommendation details, alternative ideas and source limitations remain in [Design research](research/streaming-discovery.md), [live-TV research](research/live-tv-patterns.md), and the [six assessments](assessments/summary.md).
 
-## Proposed first implementation sprint — ordinary watching and returning
+## S1 — ordinary watching and returning
 
-**Assigned as S1.** Current scope and acceptance are in docs/assignments/S1.md:
+**Implemented; acceptance pending the documented guide correction check.** Scope is in docs/assignments/S1.md; exact evidence and limits are in docs/sprints/S1-qa.md:
 
 1. App/Playback reproduce and fix scorebug Back and guide-origin focus restoration using existing layer semantics.
 2. Design/App trial direct tuning for currently airing guide cells and a direct favorites-settings action in empty Home. Keep upcoming details and explicit broadcast selection.
@@ -48,7 +48,7 @@ Done means observed focus defects are resolved, the selected prototype reduces t
 - **Release validator parity:** the shell accepted a synthetic whitespace-only value that runtime rejected (SEC-05). Small future repair to one normalization contract, with synthetic checks and no credential disclosure/rotation.
 - **Preference integrity:** retain channel visibility/favorites separately and fix program-bookmark reconciliation. Optional consistent favorite ordering can shorten scanning, following documented Fubo/YouTube TV patterns; prototype reorder/removal/migration before assigning it.
 - **Fresh Fantasy data:** distinguish current versus retained/failed scores without blocking video. Services/Design source evidence supports the need; competitor internal freshness policy is unavailable. Use fixed-clock stale/recovery fixtures.
-- **Stream discovery (R2 research active):** curate a small shortlist of useful public channels, with source provenance, programming value, regional availability, picture/codec evidence, guide support and integration burden. Research first; candidate playback checks and catalog additions are separate bounded steps. See `assignments/R2.md`.
+- **Stream discovery (R2 shortlist complete):** curate a small shortlist of useful public channels, with source provenance, programming value, regional availability, picture/codec evidence, guide support and integration burden. Research first; candidate playback checks and catalog additions are separate bounded steps. See `assignments/R2.md`.
 - **Defer feature expansion:** general watchlists, DVR recording, replays/key plays, multiview, new profiles/accounts, algorithmic recommendations and broad provider integration changes. Their appearance in a competitor does not make them current Joe-TV requirements.
 
 Every future assignment links relevant research, records the tested baseline, and specifies owners/acceptance. Reuse this evidence when still current; recheck the affected competitor/platform before a design decision. Correctness and security work use their own reproducible contracts when no credible competitor-internal comparison exists.
