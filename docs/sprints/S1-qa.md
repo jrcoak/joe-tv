@@ -1,6 +1,6 @@
 # S1 QA — original candidate checkpoint
 
-Status: **original candidate `f394d4d` not accepted: guide-origin playback loses usable input. Corrected candidate verification pending.**
+Status: **original candidate `f394d4d` not accepted; correction `d010f39` builds and passes smoke, but UI verification is blocked by the locked Mac. Guide acceptance pending.**
 Latest checkpoint: September 16, 2026 EDT (September 17 UTC), S1-QA / TEAM-4. Candidate results are appended below; baseline provenance and findings remain historical.
 
 ## Historical baseline
@@ -108,3 +108,16 @@ All five local PNGs below were reopened and visually verified after capture. The
 Original candidate is **not accepted**, despite fresh build/smoke and independent passes above. Next bounded check: exact corrected candidate fresh build/smoke, then the three failed guide entry paths, successful restoration from two guide origins, and remaining guide timing/filter cases supported by the fixture. Preserve independent passing evidence rather than broadly rerunning it without a change-related reason. Rapid duplicate Back, removed guide/Sports origins, delayed-data behavior and broad filter persistence are not established by this checkpoint. Baseline Instruments attachment limitation remains; no retry or performance gain claimed.
 
 Physical Siri Remote, VoiceOver/Reduce Motion, real media startup/audio/captions, FairPlay, couch readability and device performance remain pending suitable hardware/media. No deployment or release was performed or authorized. QA has stopped the app and shut down its simulator; PM retains coordination of the next exclusive runtime/compiler window.
+
+## Correction candidate — build checkpoint, UI blocked
+
+Exact PM candidate: **`d010f395bcae7b66e46a6b50168005005f0ba9b2`**. Created clean `codex/joe-tv-qa-s1-correction` from this SHA after clean-status and branch-absence checks, preserving prior branches. Same S1-QA / TEAM-4 assignment and report-only ownership. Source comparison against `f394d4d` confirms the sole application-source change is `JoeTVExperience.swift`: passive, nonfocusable/noninteractive `AVPlayerLayer` preview surface replaces `AVPlayerViewController`, with player detachment on dismantle. Candidate also contains Services' host benchmark scripts and reports; no S2 application changes. Source inspection alone does not verify the focus correction.
+
+- Fresh `scripts/team-check.sh smoke`: **PASS**, exit 0, parser smoke passed; existing FairPlay SPC deprecation warning. Log `.build/S1-correction-smoke.log`.
+- Fresh `scripts/team-check.sh build`: **PASS**, exit 0, `BUILD SUCCEEDED`; unsigned Debug generic tvOS Simulator, SDK 26.5, same host/Xcode/DerivedData path as original candidate. Existing AppIntents no-dependency and always-run validation-script messages remain. Log `.build/S1-correction-build.log`. Verified artifact build number **7**. Compiler released to PM after completion.
+- Preserved full build-7 bundle from exact `d010f395bcae7b66e46a6b50168005005f0ba9b2` at `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S1-corrected-artifact/Joe-TV.app` before any subsequent build. Copied executable and debug dylib SHA-256 values match their original build products (`b2ee0d6a5090e30e1483ec86ec72ab5a139d7d7a6c0167ffd4e94666cc983b11` and `47082a5872b5302a6aeba49144253b50500c9d411c4849dcdd0dbb5bdb6c6008`, respectively). This uncommitted local artifact preserves the preview-only comparison independently of future S2 builds.
+- All seven simulators were Shutdown at entry. Booted only assigned QA `C95B257D-0111-40A1-9D02-2AD70D850FF8`, installed over existing app without deletion/reset, launched navigation fixture directly to guide (PID `46633`). No real-media probe.
+- First native UI access returned **“The Mac is locked and automatic unlock could not unlock it.”** No corrected guide screen, controls, input, return focus, boundary behavior or screenshots were observed. Manual unlock was requested; no lock bypass or substitute input mechanism attempted. Thus **S1-QA-C1 remains unverified on the correction**, not passed or reproduced.
+- App terminated and assigned simulator shut down after the blocked attempt. All seven again confirmed Shutdown. No profiling retries or unrelated retests. Only this report changed.
+
+Resume after manual Mac unlock under PM's runtime coordination: use this exact built artifact if source remains identical, check the three guide entry paths after active preview/badge timeout, usable controls and Back to two distinct origins, focus-only preview, retained filter/horizontal scroll, and selection-time boundary if practical. Keep original unrelated passes attributed to `f394d4d`. This build checkpoint does not accept the correction or release S1.
