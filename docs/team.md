@@ -71,3 +71,7 @@ QA report `5ba967367f25a938c42aef061f23f270c3c8819f` is integrated. Candidate `9
 Joe explicitly requested the latest app opened in Xcode Simulator. QA verified the preserved S3 bundle, booted only `C95B257D-0111-40A1-9D02-2AD70D850FF8`, and opened Simulator. Initial install failed with IXErrorDomain code 3 before app launch. One graceful shutdown/reboot of the dedicated device resolved it; retry install and normal launch succeeded (PID 73294). CUA access now worked and QA visually verified the normal sign-in screen plus a Down focus move from email to Password. No credentials were entered, data reset, provider/media test or full UI acceptance was performed.
 
 **Simulator and Joe-TV are intentionally left open under Joe's control.** Other specialists must not operate, shut down, replace the app, reset data, or run fixtures there until PM coordinates a new handoff with Joe. Source is `9d3cd8ab798d5bb094a2a6e2f761a6d7f2daaa4d`, version 1.0/build 7, from the preserved S3 artifact with unchanged verified hash. No agent runtime session remains active.
+
+## Live-count diagnosis during Joe’s session
+
+Joe reported too many live games. PM/Services confirmed a missing metadata configuration in the opened offline QA artifact and overly permissive sports phase fallbacks. See `assessments/live-status-diagnosis.md` for evidence and next repair contract. No source/build/runtime replacement occurred; Joe still owns the open simulator. Services performed source-only diagnosis and is not assigned implementation yet.

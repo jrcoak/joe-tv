@@ -43,6 +43,7 @@ Done means observed focus defects are resolved, the selected prototype reduces t
 
 ## Supporting backlog and safeguards
 
+- **Immediate normal-build/live-status repair:** Joe observed Live 24 while a future-start game was labeled live. The opened offline QA build lacks sports metadata configuration, exposing playable-without-event and generic-live shortcuts. Before further product acceptance, prepare a properly configured browsing build and fix evidence-based phase classification with fixed-clock regressions. See `assessments/live-status-diagnosis.md`; Joe retains simulator control.
 - **Event/feed correctness before team curation:** same-team doubleheaders, reused IDs/dates, unknown categories, source fallback labels. Services S3/S5 + Playback PB-08. Competitor team features motivate the outcome; their matching internals are unknown. Use synthetic identity/time fixtures.
 - **Dormant guide transition:** App’s S3 review found that the unused `openVeryLocal` entry point rotates the guide request ID only when its queued refresh enters. Before reactivating this entry point, invalidate synchronously and test controlled completion ordering. This is pre-existing, has no current call site, and is not a reproduced S3 defect.
 - **Security maintenance:** Services/SecOps verify metadata read-token scope and separate publisher write access once backend source is identified; validate provider URL/header destinations; bound sign-out work. No critical/high issue was confirmed. Do not infer safety from missing backend access.
