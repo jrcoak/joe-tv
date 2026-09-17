@@ -1630,11 +1630,18 @@ enum ParserSmoke {
             check(item(start: clock.addingTimeInterval(-600), status: status, subtitle: "Live").sportsPhase(at: clock) == .unknown,
                   "Disrupted status falsely implied play underway")
         }
-        for status in ["Final", "Final/OT", "Completed", "Ended", "Full Time", "Post-game"] {
+        for status in ["Final", "Final/OT", "Final OT", "Quarter-final · Final OT", "Completed", "Ended", "Full Time", "Post-game"] {
             check(item(start: future, status: status, subtitle: "Live").sportsPhase(at: clock) == .replay, "Explicit completion lost precedence")
             check(item(start: future, status: status, playable: false).sportsPhase(at: clock) == .completed, "Unplayable completed event changed")
         }
         check(item(start: future, subtitle: "Replay").sportsPhase(at: clock) == .replay, "Replay exclusion changed")
+        for stage in ["Quarter-final", "Semi-final", "Quarter final", "Semi final", "Quarter  final", "Semi-finals"] {
+            check(item(start: clock.addingTimeInterval(-600), end: clock.addingTimeInterval(600), status: stage).sportsPhase(at: clock) == .live,
+                  "Separated tournament stage status was treated as completion")
+            check(item(start: clock.addingTimeInterval(-600), end: clock.addingTimeInterval(600), subtitle: stage).sportsPhase(at: clock) == .live,
+                  "Separated tournament stage subtitle was treated as completion")
+            check(item(subtitle: stage).sportsPhase(at: clock) == .unknown, "Untimed tournament stage was treated as completion")
+        }
         check(item(subtitle: "Quarterfinal").sportsPhase(at: clock) == .unknown, "Quarterfinal falsely treated as final")
 
         var calendar = Calendar(identifier: .gregorian)

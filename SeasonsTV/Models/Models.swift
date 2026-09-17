@@ -261,9 +261,12 @@ extension MediaItem {
     }
 
     private static func containsCompletionSignal(_ value: String) -> Bool {
-        // Word boundaries keep tournament labels such as quarterfinal from
-        // being interpreted as a completed match.
-        hasStatusSignal(#"\b(?:final(?!\s+(?:round|four)\b)|complete|completed|ended|full[ -]time|post[ -]?game)\b"#, in: value)
+        // Ignore stage names while preserving a separate terminal status, e.g.
+        // "Quarter-final · Final OT". Word boundaries also exclude quarterfinal.
+        let status = value.replacingOccurrences(
+            of: #"\b(?:quarter|semi)[\s-]+finals?\b"#, with: "", options: .regularExpression
+        )
+        return hasStatusSignal(#"\b(?:final(?!\s+(?:round|four)\b)|complete|completed|ended|full[ -]time|post[ -]?game)\b"#, in: status)
     }
 
     private static func containsUncertainSignal(_ value: String) -> Bool {
