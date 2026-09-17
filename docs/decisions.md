@@ -10,7 +10,7 @@
 | TEAM-006 | First team milestone: assessment plus concrete innovation ideas and a recommended next milestone. No speculative app implementation or extra release in M0. | Joe wants innovation and ideas; no specific feature selected. |
 | TEAM-007 | Use the simulator as much as practical. Joe assists with physical-device checks, including FairPlay and remote behavior that simulation cannot establish. | Joe's device-testing preference. |
 | TEAM-008 | Existing task owns the in-progress commit and next TestFlight build. Setup uses its own worktree and the committed app baseline (TEAM-011). | Joe's latest steering. |
-| TEAM-009 | Keep configured model defaults; no scheduled coordination or additional agents installed as part of setup. | Working default; source spec describes model choice as an observation and defers recurring meetings. |
+| TEAM-009 | Superseded by TEAM-015 for model choice. Initial default: keep configured model defaults; no scheduled coordination or additional agents installed as part of setup. | Working default; source spec describes model choice as an observation and defers recurring meetings. |
 | TEAM-010 | Add SecOps as the sixth specialist, for seven roles including PM. Include security in design, implementation, and release review. | Joe explicitly requested a SecOps agent. |
 | TEAM-011 | Begin from app commit `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8` in a separate integration worktree while the original task finishes TestFlight. Its build-7 project-file change remains untouched. | Joe confirmed the commit is done and told setup to start. |
 
@@ -19,3 +19,9 @@
 | TEAM-013 | Highest priority is UI polish, performance, simple intuitive navigation, and fewer heavy click paths. Explore left-side Plex-like primary navigation and a future curated Home using favorite teams such as Patriots/Bruins. These future directions do not authorize an immediate layout replacement. | Joe's latest product direction; spec advanced to TEAM-2. |
 
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.
+
+| TEAM-014 | All discussed product improvements may be planned for future sprints. Current work remains setup, assessment, competitive research and roadmap, with no app feature changes. | Joe explicitly deferred the improvements. |
+| TEAM-015 | PM may choose different models and reasoning effort by task, balancing quality and sensible resource use. | Joe explicitly authorized model delegation. |
+| TEAM-016 | Research major streaming-app patterns for proposed improvements, including Netflix, Disney+, YouTube TV and relevant peers; distinguish source claims from measured usability and map findings to Joe-TV. | Joe's competitive research request. |
+
+| TEAM-017 | Standups mean internal PM/specialist coordination. Recommended implementation: one fresh read-only coordinator subagent per checkpoint, durable repo state, existing specialist contexts and PM decision ownership. No daily schedule, replacement PM or extra user-owned standup task. | Joe corrected the audience; mechanism is PM's operating recommendation. |

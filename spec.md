@@ -1,6 +1,6 @@
 # Joe-TV product specification
 
-Revision: TEAM-2 (Joe's UI/performance priorities, September 2026)
+Revision: TEAM-3 (future-sprint research and team operation, September 2026)
 Owner: Joe Coakley
 Status: existing product; first team milestone is assessment and innovation planning
 
@@ -10,9 +10,11 @@ Make Joe-TV an enjoyable, fast, dependable Apple TV experience for live channels
 
 ## Product priorities from Joe
 
-1. **Highest immediate priority: UI quality, performance, and navigation simplicity.** Joe likes the current visual direction but finds parts clunky or amateur. Reduce unnecessary presses and transitions, eliminate focus surprises, and improve responsiveness. Judge proposals by whether normal watching feels natural and easy, not by how many features they add.
+1. **Highest priority when implementation begins: UI quality, performance, and navigation simplicity.** Joe likes the current visual direction but finds parts clunky or amateur. Reduce unnecessary presses and transitions, eliminate focus surprises, and improve responsiveness. Judge proposals by whether normal watching feels natural and easy, not by how many features they add.
 2. **Future direction: left-side primary navigation**, similar to the library navigation Joe likes in Plex. Explore it as a coherent remote/focus system, not merely moving buttons. It is a roadmap/design proposal until a specific migration is selected.
 3. **Future direction: curated Home across channels and teams.** Favorite teams such as the Patriots and Bruins should surface relevant games on Home. Propose team identity/preferences, event matching, empty/off-season behavior, and migration from existing channel favorites; do not quietly replace the current Home during assessment.
+
+Joe explicitly deferred these improvements to future sprints. Current work covers setup, assessment, competitive research and roadmap only. For every proposed product improvement, compare relevant major-app patterns against Joe-TV, with current source links, platform limitations, tradeoffs and a small validation. Netflix, Disney+, YouTube TV and Plex are core references; additional apps are useful where their patterns fit. Document what already works as well as gaps. Competitor feature documentation does not establish usability or speed.
 
 For M0, prioritize an evidence-backed friction map and before/after interaction proposals. Record press count, focus transitions, context restoration, and measurable responsiveness where practical. Distinguish measured performance from source-based hypotheses. The recommended first implementation milestone must address UI/navigation/performance. Security and reliability findings remain part of engineering review, without displacing this priority unless a confirmed urgent issue warrants it.
 
@@ -57,7 +59,7 @@ Deliverables:
 
 Acceptance:
 
-- Every specialist acknowledges the governing spec revision; affected Design/App work adopts TEAM-2 and the same app baseline plus team-bootstrap revision.
+- Every specialist acknowledges the assignment's governing revision. Original code assessments began under TEAM-1; Design/App priorities adopted TEAM-2; PM and R1 research follow TEAM-3 without invalidating the unchanged app baseline.
 - Each report separates observed behavior, old reports, inferred risks, and proposed ideas.
 - Design ideas follow RALLY's adopted visual language and Joe's later decisions.
 - At least two independently owned work packages run without conflicting source edits or runtime use.

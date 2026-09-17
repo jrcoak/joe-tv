@@ -39,12 +39,16 @@ Do not reset simulator data, reinstall by deleting the app, change shared settin
 
 ## Product constraints
 
-- Focus previews; Select commits. Back unwinds one layer and restores the originating context.
+- Focus may update details and the existing muted preview; Select commits to full-screen playback. Back unwinds one layer and restores the originating context.
 - Quick Switch combines up to four recent streams with favorites, deduplicates, omits the active stream, and stores stable identities rather than expiring URLs.
 - Live/DVR playback joins live. Keep baseball Home/Away/National selection and the 15-minute pregame coverage policy.
 - Sports combines S4U/ESPN+ sources with Live/Upcoming and persistent granular filters. Avoid replay/studio-show regressions and heavy catalog work during focus rendering.
 - Ordinary sports metadata is published by the Mac mini to Personal Media API. Fantasy Zone is the intentional exception: direct live ESPN scores and Sleeper matchup reads.
 - Fantasy Zone is optional. Keep full-width video, the scorebug without a fake probability bar, and the translucent Matchup/League drawer.
+
+## Research and model choice
+
+Joe authorizes PM to choose appropriate models per task; record overrides and use stronger reasoning for ambiguity/risk. Prefer bounded assignments over indiscriminate parallel/max-effort work. Every proposed product improvement needs a relevant competitive comparison or an explicit reason competitor parity does not apply. Cite current official evidence, label platform limits and distinguish documented features from measured user benefit. Product improvements remain deferred until a scoped implementation milestone is selected.
 
 ## Verification and reporting
 

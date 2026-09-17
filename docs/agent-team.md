@@ -20,7 +20,7 @@ Joe explicitly excluded Notion and Northstar. Do not attempt to connect or synch
 
 Use PM / Integrator, Product Design, tvOS App, Playback, Services, QA, and SecOps. These are seven persistent Codex tasks, not seven agents that must run continuously. Their conversations and files are separate. Deliver necessary context explicitly; common project membership does not synchronize it.
 
-Use configured task model defaults unless Joe requests a model change. Fernando's model settings in the source document are background, not a mandatory configuration.
+Joe authorizes PM to choose models and reasoning effort per assignment. Use strong reasoning for architecture, security, ambiguous design and cross-role synthesis; use a capable lighter model for bounded extraction, repeatable checks or small well-specified edits. Escalate if evidence or quality is weak. Do not default every task to maximum effort or optimize price at the expense of a reliable result. Record explicit overrides in assignments; verify availability when assigning. Fernando's choices are historical context, not mandatory settings.
 
 At the end of an assignment, send one useful handoff to PM and become idle. PM replies only with an actionable assignment or needed decision; avoid acknowledgment loops. No recurring schedule is installed by this setup. Resume the same team when Joe requests the next milestone.
 
@@ -62,6 +62,10 @@ Every specialist contributes two or three grounded opportunities. For each, desc
 Design may sketch a new idea in its owned report. App, Playback, and Services assess feasibility; QA describes how to tell whether the idea improves the experience; SecOps evaluates relevant trust and credential implications. PM combines overlaps into a short ranked portfolio: useful near-term improvements and a small number of larger experiments. Joe chooses the next implementation milestone.
 
 SecOps reviews assignments involving authentication, credentials, networking/URLs, provider parsing, dependencies, permissions, or releases. Routine visual edits do not require a ceremonial security gate. Confirmed material risks get a bounded remediation assignment and independent review; vague hypothetical concerns do not halt unrelated work.
+
+## Standups and fresh context
+
+Keep this PM task as Joe's primary contact. Joe clarified standups are internal PM/specialist coordination. Use a fresh coordinator subagent for one bounded checkpoint review; keep specialist assignment contexts intact and provide project state explicitly. Return conflicts, dependencies and proposed next steps to PM. See `docs/standups/README.md`. No user-owned standup task or recurring schedule is created.
 
 ## Completion and recovery
 
