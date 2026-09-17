@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1–S3 implemented and offline QA passed. Latest app is open in Simulator for Joe; full UI acceptance remains pending.**
+Status: **S4 live-status repair is installed in Simulator with configured metadata and observed Upcoming schedule. S5 Sports filter layout repair is in progress after Joe reported oversized text. S1–S3 full UI acceptance remains pending.**
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -10,13 +10,13 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 
 | Role | Exact task ID | Host | Worktree | Branch | Assignment |
 | --- | --- | --- | --- | --- | --- |
-| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | S1 integration |
+| PM / Integrator | `01a0ad24-56de-73e1-b5de-5a0fdc8c49ff` | local | `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm` | `codex/joe-tv-team` | S5 integration |
 | Product Design | `01a0ad34-9969-7ce1-9a82-a53fe7b979e9` | local | `/Users/joecoakley/.codex/worktrees/3770/SeasonsTV` | `codex/joe-tv-design-s2` | S2-DESIGN complete |
-| tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s3-review` | S3 App review complete |
+| tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s5` | S5 filter layout implementation |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
-| Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-s3` | S3-SERVICES complete |
-| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s3-offline` | S3 offline QA complete; UI access pending |
-| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s3-review` | S3 SecOps review complete |
+| Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-s4` | S4 complete |
+| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s4` | S4 delivered; awaits S5 candidate |
+| SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s4` | S4 configured-build review complete |
 
 PM owns this roster. Task titles are descriptive; route by exact ID. Worktrees and branch names are recorded from actual task reports rather than guessed.
 
@@ -75,3 +75,9 @@ Joe explicitly requested the latest app opened in Xcode Simulator. QA verified t
 ## Live-count diagnosis during Joe’s session
 
 Joe reported too many live games. PM/Services confirmed a missing metadata configuration in the opened offline QA artifact and overly permissive sports phase fallbacks. See `assessments/live-status-diagnosis.md` for evidence and next repair contract. No source/build/runtime replacement occurred; Joe still owns the open simulator. Services performed source-only diagnosis and is not assigned implementation yet.
+
+## Current S4/S5 checkpoint — September 17, noon
+
+S4 candidate `7fe97fcddd32630f27de2e74ea2f70e53bb017d5` passed independent helper tests, parser smoke, guide merge and configured build. QA report `6f05a7b` records normal launch with login retained and Sports Live 0 / Upcoming 25, loaded dates, upcoming/pregame labels and no missing-configuration banner. Source no longer infers live games from playable feeds; insufficient timing is unknown. The separate configured artifact is `.build/S4-configured-artifact/Joe-TV.app` in QA's worktree; older S1–S3 artifacts are offline/unconfigured and must not be presented as a configured browsing build.
+
+QA stopped when Joe resumed input and returned runtime to him. His 11:55 screenshot of Filter Sports triggered S5 (`assignments/S5.md`); App owns the isolated layout repair and Design reviews it. No agent currently owns the simulator. PM will coordinate the replacement/verification session when the exact S5 candidate is built. Earlier runtime/branch checkpoint sections above are historical.

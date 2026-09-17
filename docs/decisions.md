@@ -29,4 +29,7 @@
 | TEAM-025 | Stop new-channel work entirely, including the retained WBZ candidate; focus on existing app quality and its remaining verification. | Joe: “forget about the new channels, how’s everything else looking?” Supersedes the active-candidate portion of TEAM-023; research is historical only. |
 | TEAM-026 | Open latest tested S3 app in normal mode in the dedicated Apple TV simulator and leave it for Joe. Recover a stalled install with one graceful dedicated-device restart while preserving data. QA hands runtime ownership to Joe afterward. | Joe requested opening the app, then reported the simulator frozen. Install/launch and responsive sign-in were verified; remaining journey acceptance is separate. |
 
+| TEAM-027 | Fix false live-game classification and deliver a properly configured normal simulator build; insufficient timing is unknown, future/ended windows override generic labels, and playable feeds alone are not live-game evidence. | Joe: “ok. fix it though….” S4 implemented and installed with independent checks and normal Sports evidence. |
+| TEAM-028 | Repair the existing Sports filter sheet with bounded explicit typography, uniform tiles and clear focus/scroll regions; preserve category selection and existing navigation. | Joe’s September 17 11:55 screenshot and “the filter UI went wonky.” S5 scoped to the observed defect. |
+
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.
