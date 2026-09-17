@@ -7,7 +7,9 @@ Status: **UI NOT OBSERVED; acceptance remains pending.** Checked September 17, 2
 1. First supported read-only CUA call, `cua.getState()`, **succeeded**, returning app/browser inventory and listing Simulator as running. It did not report a locked Mac. An app inventory alone does not establish usable Simulator input or current screen state.
 2. Selected that listed app with `cua.getApp("com.apple.iphonesimulator")`. It failed with **`Computer Use server error -10005: timeoutReached`**. No Simulator accessibility tree or screenshot was returned, and no app interaction was possible.
 
-No retry, auto-unlock command, credential entry, lock bypass or alternative input mechanism was attempted. The prior locked-state result is historical; this checkpoint establishes a **CUA app-access timeout**, not that the Mac is currently locked. PM was informed promptly. No corrected guide outcome, Channels layout observation or new PNG can be claimed.
+No auto-unlock command, credential entry, lock bypass or alternative input mechanism was attempted. The prior locked-state result is historical; this checkpoint establishes a **CUA app-access timeout**, not that the Mac is currently locked. PM was informed promptly. No corrected guide outcome, Channels layout observation or new PNG can be claimed.
+
+PM subsequently authorized exactly one bounded retry selecting the already-listed Simulator with a longer tool execution timeout. Repeated `cua.getApp("com.apple.iphonesimulator")` with `timeout_ms: 60000`; the server again returned **`Computer Use server error -10005: timeoutReached`**, after approximately 5.5 seconds. The longer outer limit did not resolve the connection failure. No tree/screenshot or lock message was returned. Runtime attempts stopped after this retry; UI access remains unavailable, and current lock state remains unestablished. No simulator commands or input followed. Report baseline remains `638a75a` as explicitly permitted by PM; its later stream-preference documentation revision does not change the tested artifacts.
 
 ## Preserved artifacts and runtime scope
 
