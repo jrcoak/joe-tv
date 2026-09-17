@@ -63,7 +63,8 @@ class ConfiguredBuildTests(unittest.TestCase):
             self.assertNotIn(TOKEN, str(result))
             with self.assertRaises(ValueError):
                 helper.validate_bundle(app, TOKEN + 'wrong')
-            for invalid_url in ['$(MEDIA_API_BASE_URL)', '', 'http://metadata.invalid']:
+            for invalid_url in ['$(MEDIA_API_BASE_URL)', '', 'http://metadata.invalid',
+                                'https://', 'https:///only-path', 'https://?query']:
                 info['MediaAPIBaseURL'] = invalid_url
                 with (app / 'Info.plist').open('wb') as stream:
                     plistlib.dump(info, stream)

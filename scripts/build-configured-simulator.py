@@ -9,7 +9,7 @@ import plistlib
 import re
 import subprocess
 import sys
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 
 def validate_config_path(config, common_git_dir):
@@ -53,7 +53,12 @@ def validate_bundle(app, expected_token):
     base = info.get('MediaAPIBaseURL')
     if not isinstance(actual, str) or actual.strip() != expected_token:
         raise ValueError('Built app does not contain the selected Debug configuration.')
-    if not isinstance(base, str) or not base.startswith('https://') or '$(' in base:
+    try:
+        parsed = urlsplit(base) if isinstance(base, str) else None
+        valid_base = parsed is not None and parsed.scheme == 'https' and bool(parsed.hostname) and '$(' not in base
+    except ValueError:
+        valid_base = False
+    if not valid_base:
         raise ValueError('Built app has no usable HTTPS metadata API base URL.')
     return {'bundle_id': info.get('CFBundleIdentifier'),
             'version': info.get('CFBundleShortVersionString'),
