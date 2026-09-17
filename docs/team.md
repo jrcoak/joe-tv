@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: **S1/S2 source assembled; offline QA next; UI blocked by locked Mac**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
+Status: **S1/S2 source assembled and offline QA passed; UI blocked by locked Mac**; M0/R1 setup and research complete. See docs/assignments/S1.md for current ownership.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -15,7 +15,7 @@ PM integrated release build-number commit `138c2714805ce47d26f0da5c3d9d8cf48bd48
 | tvOS App | `01a0ad34-a194-7232-bde5-886ee0c7fb35` | local | `/Users/joecoakley/.codex/worktrees/0b9c/SeasonsTV` | `codex/joe-tv-app-s2` | S2-APP complete |
 | Playback | `01a0ad34-ab28-7012-94c5-ed6e82ea8f8e` | local | `/Users/joecoakley/.codex/worktrees/52e6/SeasonsTV` | `codex/joe-tv-playback-s1` | S1-PLAYBACK |
 | Services | `01a0ad34-b79b-7253-a48c-8667f351276e` | local | `/Users/joecoakley/.codex/worktrees/cc62/SeasonsTV` | `codex/joe-tv-services-s2` | S2-SERVICES complete |
-| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s1-correction` | S2-QA offline assignment next |
+| QA | `01a0ad34-d1be-78d0-b050-35a67462b35d` | local | `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV` | `codex/joe-tv-qa-s2-offline` | S2-QA offline complete; UI pending unlock |
 | SecOps | `01a0ad34-c2ad-7e22-ae18-3468ca71fa88` | local | `/Users/joecoakley/.codex/worktrees/345c/SeasonsTV` | `codex/joe-tv-secops-s2-review` | S2-SECOPS complete |
 
 PM owns this roster. Task titles are descriptive; route by exact ID. Worktrees and branch names are recorded from actual task reports rather than guessed.
@@ -49,3 +49,7 @@ Candidate `f394d4d356851092ae579051cff5a5a667d53cdb` passed fresh smoke and unsi
 ## Locked-host continuation
 
 S1 correction d010f39 passes fresh smoke/build but has no UI acceptance because the Mac locked. QA preserved `.build/S1-corrected-artifact/Joe-TV.app` in its worktree, stopped the app and shut down the dedicated simulator. Services source a9dd5d7 and App Channels source 1783a1f plus their reports and SecOps acceptance are now integrated; the next exact combined commit goes to offline QA. No source/build success substitutes for the remaining UI checks. PM has asked Joe to unlock and will coordinate resumption; no automation or lock workaround is installed.
+
+## Final offline checkpoint
+
+QA independently passed all three suites/build checks at combined application candidate `bbb60d6effc7536e27b931899c8915d38e6449c2`. Report `386b6e5e491b56f72c222d2c0854c32b61e2210c` is integrated. Combined bundle: `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/S2-combined-artifact/Joe-TV.app`; retained S1 artifact remains unchanged. All specialists are idle, no compile/runtime session is active, and the dedicated simulator is shut down. See `sprints/quality-cycles.md` and `sprints/S2-qa.md` for the exact pending UI sequence. UI acceptance and any release remain incomplete.
