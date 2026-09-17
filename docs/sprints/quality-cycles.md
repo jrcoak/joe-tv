@@ -1,6 +1,6 @@
 # Joe-TV quality cycles
 
-Status: four implementation cycles are assembled on local `codex/joe-tv-team`. S4 candidate `7fe97fcddd32630f27de2e74ea2f70e53bb017d5`, version 1.0 / build 7, passed independent helper tests, parser smoke, guide merge and configured simulator build. It is installed and normal Sports shows populated Upcoming listings with the missing-configuration banner gone. S5 is repairing the oversized Filter Sports sheet reported during Joe's session. Earlier S1–S3 full UI acceptance remains pending. No release or production deployment has been performed.
+Status: five bounded implementation cycles are assembled on local `codex/joe-tv-team`. Latest application source `98844e3ebdf82396011be1365da630a9addd1ddd`, version 1.0 / build 7, is installed in the configured simulator. S4/S5 timing/studio corrections and Filter Sports layout have fresh test/build and sampled normal-session evidence. Filter Sports is open for Joe with login and original selections preserved. Earlier S1–S3 full UI/async acceptance remains pending. No release or production deployment has been performed.
 
 ## Implemented
 
@@ -11,6 +11,8 @@ Status: four implementation cycles are assembled on local `codex/joe-tv-team`. S
 | S3 guide continuity | Keep applicable listings/mappings for failed sources; successful updates, including empty, replace old data. Preserve original program times and source age, including long-running programs across guide windows. | Services source `88061c7`, independent App/SecOps source reviews, and QA merge/smoke/build PASS at combined `9d3cd8a`. Async provider lifecycle and on-screen behavior remain unobserved; the navigation fixture skips refreshEPG. See `S3-services.md`, `S3-app-review.md`, `S3-secops.md`, and `S3-qa.md`. |
 
 | S4 truthful Sports status | Unknown timing no longer becomes Live; future starts and end bounds govern generic statuses; studio examples excluded; proper Debug metadata configuration restored. | Independent four-check PASS and configured normal launch; observed Live 0 / Upcoming 25, dated upcoming/pregame labels and no configuration banner. Partial normal-session sample only; full grid/unknown state not observed. See `S4-qa.md`. |
+
+| S5 Sports filter layout | Explicit typography, equal tiles, complete long names, separated fixed header/footer, focus gutters and singular count grammar. | Configured build, all26-category traversal, both-column focus, toggle/reopen persistence with restoration, Done/Back focus return and Design screenshot review passed. Final studio follow-up smoke/build and normal exclusion sample passed at `98844e3`. See `S5-qa.md`. |
 
 Provider benchmark on a fixed synthetic 70-station / 3,360-program guide: five final host parse samples had a 27.82 ms median. Prior baseline medians varied roughly 2–13 seconds under different host load. This supports a workload-specific parsing improvement; it does not establish a production ratio, Apple TV input latency or hardware performance. See `../research/guide-parser-performance.md` and `S2-services.md`. S3 replaces AppModel's merged-window `Date()` stamp with conservative source age. The single aggregate timestamp can remain older than individual retained contributions; it is not per-source freshness tracking.
 
@@ -36,6 +38,8 @@ S3 source and App/SecOps reviews are integrated; independent QA report `5ba96736
 
 Next: after Joe’s simulator session and a coordinated runtime handoff, finish the pending guide-controls correction and Channels visual acceptance, route any observed defect to its owner, then verify the final combined app. The latest normal-mode app is open at sign-in and responded to one focus movement; this is launch evidence, not acceptance of those remaining journeys. Further layout changes should follow that checkpoint. New-channel work is closed; sidebar/team-curated Home remain later product directions.
 
-## S4 delivered; S5 active
+## S4/S5 delivered
 
 The live-status repair and configured build are installed, preserving Joe's login and preferences. PM inspected the saved normal Sports screenshot. QA stopped on detected user input and handed the app back to Joe. His subsequent Filter Sports screenshot demonstrates oversized semantic fonts/uneven tile heights; S5 repairs that sheet only, with App implementation, Design guidance and fresh configured-build/visual QA. See `../assignments/S5.md`. The earlier plan to retest retained S1/S2 artifacts remains separate; do not replace Joe's configured app with those offline artifacts without a named session.
+
+Final follow-up `98844e3` also removes observed NFL Total Access and ACC Network Football Podcast from game listings; meaningful fixed-clock regressions preserve legitimate NFL/college games. QA observed both exclusions after normal metadata arrival, restored Joe's five sports, and left the corrected filter open. Design accepted sampled source/screen evidence; physical couch readability and VoiceOver were not certified. The current next phase is the previously pending guide-controls/Channels acceptance after a coordinated runtime handoff, not additional speculative layout work during Joe's simulator session.
