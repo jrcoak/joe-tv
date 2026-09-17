@@ -2,7 +2,7 @@
 
 ## 1. Assignment and inspected baseline
 
-- Assignment: M0-APP; accepted specification: **TEAM-1**.
+- Assignment: M0-APP; accepted governing specification: **TEAM-2**. The original source assessment below began under TEAM-1; section 7 adopts the revised priorities without changing its evidence baseline.
 - App baseline: `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8`.
 - Assessed HEAD / team bootstrap: `314968dc10f0bd73451ed6b0876a7fc7ed5c5233`.
 - Specialist task: `01a0ad34-a194-7232-bde5-886ee0c7fb35`, host `local`.
@@ -143,3 +143,28 @@ Open decisions for a future scoped assignment: when should an expired guide rece
 - Coordination limitation: both onboarding message attempts to the assigned PM task were rejected by automatic approval review because it did not accept the destination authorization evidence. No PM message was delivered. The report and local commit remain available for review; sending the handoff requires that approval issue to be resolved.
 
 All proposed runtime work needs PM resource allocation. Current release ownership, credentials, private configuration, the original checkout's source, and SHELF were left untouched.
+
+## 7. TEAM-2 addendum — polish and responsiveness first
+
+Accepted TEAM-2 / TEAM-013 after reading `spec.md`, `docs/decisions.md`, and `docs/assignments/M0.md` at `25f0b74db3b0fae8cc29be49cb95d3a179f7b934` via `git show`. Joe likes the visual direction; the immediate recommendation is to make familiar watching paths simpler, more predictable, and responsive. This priority ordering supersedes any implied implementation order in P1–P3. Existing findings remain source evidence at `314968d`; no runtime evidence or implementation is added.
+
+### Recommended first milestone: remove friction from ordinary watching
+
+| Source-based friction | Proposed first-milestone response | Validation / ownership |
+| --- | --- | --- |
+| Empty Home directs viewers to settings textually; all-disabled guide offers an ineffective Show all (APP-03) | Direct, clearly focused Choose Favorites / Manage Channels actions using the existing settings route; preserve the return target | App + Design; QA counts the full remote path and checks empty/failure fixtures. Small scope from P2. |
+| Program bookmarks can be lost; nested broadcast Back targets the first feed; playback return is not proven (APP-02) | Repair bookmark reconciliation and explicitly restore the originating item/layer; retain current Home/guide entry conventions | App + Playback; PM assigns shared symbols. QA exercises repeated open/close/play/return, including missing-item fallback. Bounded portion of P1. |
+| Guide time window can expire (APP-01) | A clear Now recovery action, with an agreed safe recentering rule | App + Design; controlled-clock fixture acceptance from P1. |
+| Eager guide/list derivation and broad state updates may affect responsiveness (APP-05) | Measure representative focus paths, then change only the demonstrated source of delay; keep cached consolidation and existing visual language | QA establishes baseline; App profiles assigned UI code. Performance impact is still a hypothesis. |
+| Selected state, unavailable actions and motion treatment vary (APP-04) | Apply consistent focus/selection semantics and Reduce Motion handling to touched controls, with readable status copy | App + Design + QA; bounded P3 work alongside the interaction fixes. |
+
+**Example before/after journey — a viewer with no favorites wants to personalize Home.** Today: read “Settings → Channels,” find More, Select to open the menu, find Channels, Select to open settings, change favorites, then return. Proposed: focus Choose Favorites in the empty Home state, Select to open the existing channel/favorite settings, make the same choices, then return to the originating Home context (or the first new favorite if the empty-state action no longer exists). Opening settings drops from **two activation presses to one**, counted from the respective entry control; these are source-derived/planned counts, not observed remote results. Directional presses, favorite edits and closing settings are excluded from that comparison and must be counted in QA's complete journey. No modal or settings redesign is required for this experiment.
+
+**Performance validation plan for that milestone:** identify the tested commit, Apple TV/simulator, fixture catalog/window sizes, media, network and cache conditions. Record full press counts, focus transitions, unexpected jumps and return targets for Home → watch → Back, guide → details → watch → Back, and Sports → feed → mode → Back. Measure input-to-focus feedback, selected-content update and playback preparation separately, including warm/cold runs and tail latency; do not attribute provider wait to layout work. Capture frame stalls and peak memory during guide traversal. Agree numerical budgets only after this baseline, compare the same journeys/conditions after each targeted change, and require no regression in accepted playback or focus behavior. This addendum ran none of these checks.
+
+### Future roadmap directions, after the first milestone
+
+- **Left-side primary navigation:** Design should prototype a coherent Home / Live TV / Sports rail, with App mapping `CatalogView.destinationBar`, `destinationButton`, `requestContentFocus`, and screen return callbacks. Define when Left means adjacent content versus navigation, how Right restores each destination's context, selected-versus-focused state, and Back at each layer. Preserve content width/readability and immersive playback. Smallest experiment: a navigation-only fixture prototype compared with the existing top bar on the same three journeys. Accept it only if remote paths are predictable and common routes need no more presses; a visual move alone is insufficient. Medium scope; requires Design/App/QA and Playback boundary agreement, with PM assigning any shared route state. It is not selected for implementation now.
+- **Curated Home with Patriots/Bruins games:** keep channel favorites and their saved choices; add optional team preferences using stable league/team identities with Services-owned provider mappings. Match existing normalized `MediaItem.sportsEvent` data by team, date and stable event identity, deduplicating sources and reusing existing availability/feed-selection rules. A schedule match must not imply a playable stream. Show relevant live/next games alongside favorite channels; when no game is scheduled or it is off-season, keep channels useful and explain the absence compactly. Migration should preserve all current channel/visibility settings and leave team selection opt-in, not auto-select Joe's example teams for every installation. Smallest experiment: fixture Home cards for Patriots/Bruins with live, upcoming, duplicate-source, unavailable and off-season cases. Design owns ordering/copy, App owns presentation, Services owns identity/matching, PM allocates model/preference symbols, and QA checks duplicates and playback eligibility. Medium scope with data-contract uncertainty; no new integration or Home replacement is authorized by M0.
+
+**Addendum delivery:** only this report changed. PM has already retrieved the original report commit `bd4b790`; final-response handoff is the agreed fallback for the rejected outbound messaging. No further outbound retry or separate approval request is needed.
