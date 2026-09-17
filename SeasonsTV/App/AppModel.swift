@@ -1196,6 +1196,10 @@ final class AppModel: ObservableObject {
             switch item.sportsPhase(at: Date()) {
             case .live, .upcoming:
                 return true
+            case .unknown:
+                // Event timing is unknown, but an independently selected stream
+                // still joins its live edge. History eligibility uses sportsPhase.
+                return true
             case .replay, .completed:
                 return false
             }

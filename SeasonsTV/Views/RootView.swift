@@ -2100,7 +2100,7 @@ private struct SportsView: View {
                                 }
                             }
                             .accessibilityLabel(
-                                "\(item.title), \(item.subtitle ?? "Live"), \(eventActionDescription(for: item))"
+                                "\(item.title), \(item.sportsPhase(at: Date()) == .unknown ? "Time unavailable" : item.subtitle ?? "Live"), \(eventActionDescription(for: item))"
                             )
                             .accessibilityIdentifier("sports.item.\(item.id)")
                         }
@@ -2149,7 +2149,7 @@ private struct SportsView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
 
-                if let subtitle = item?.subtitle, !subtitle.isEmpty {
+                if let subtitle = item.map({ $0.sportsPhase(at: Date()) == .unknown ? "Time unavailable" : $0.subtitle ?? "" }), !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.system(size: 18, weight: .regular))
                         .foregroundStyle(LiveTVPalette.mutedText)
@@ -2286,12 +2286,15 @@ private struct SportsView: View {
 
     private func stageEyebrow(for item: MediaItem?) -> String {
         guard let item else { return "SPORTS & EVENTS" }
+        if item.sportsPhase(at: Date()) == .unknown { return "TIME UNAVAILABLE" }
         if item.sportsPlaybackAvailable(at: Date()) { return "LIVE & ON DEMAND" }
         return item.sportsEvent?.league?.uppercased() ?? "UPCOMING"
     }
 
     private func unavailableActionTitle(for item: MediaItem, at date: Date) -> String {
         switch item.sportsPhase(at: date) {
+        case .unknown:
+            return "TIME UNAVAILABLE"
         case .completed, .replay:
             return "GAME COMPLETE"
         case .live:
@@ -2416,7 +2419,7 @@ private struct SportsEventRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 10) {
-                    Text(item.subtitle ?? "Live")
+                    Text(item.sportsPhase(at: Date()) == .unknown ? "Time unavailable" : item.subtitle ?? "Live")
                         .font(.system(size: 15, weight: .regular))
                         .foregroundStyle(LiveTVPalette.mutedText)
                         .lineLimit(1)

@@ -951,6 +951,13 @@ struct JoeTVSportsView: View {
 
     private var items: [MediaItem] { model.consolidatedSportsItems }
 
+    private func hasUnknownListings(at date: Date) -> Bool {
+        items.contains {
+            model.enabledSportsCategoryIDs.contains($0.categoryID)
+                && $0.sportsPhase(at: date) == .unknown
+        }
+    }
+
     private func displayedItems(at date: Date) -> [MediaItem] {
         SportsEventGuidePolicy.filteredItems(
             items,
@@ -1021,6 +1028,13 @@ struct JoeTVSportsView: View {
                             InlineStatusBanner(message: espnError) {
                                 Task { await model.loadSportsSchedule() }
                             }
+                        }
+
+                        if hasUnknownListings(at: context.date) {
+                            Text("Time unavailable for some listings. They are omitted from Live and Upcoming.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(SeasonTheme.secondaryText)
+                                .accessibilityIdentifier("sports.unknownListingsNotice")
                         }
 
                         guideContent(at: context.date, items: displayed)
@@ -1112,7 +1126,9 @@ struct JoeTVSportsView: View {
                         JoeTVScoreLine(event: event, compact: false)
                     }
 
-                    Text(detail?.status?.detail ?? item.subtitle ?? eventStatus(item, at: date))
+                    Text(item.sportsPhase(at: date) == .unknown
+                         ? "Time unavailable"
+                         : detail?.status?.detail ?? item.subtitle ?? eventStatus(item, at: date))
                         .font(.system(size: 15, weight: .medium, design: .monospaced))
                         .foregroundStyle(SeasonTheme.secondaryText)
                         .lineLimit(1)
@@ -1135,7 +1151,7 @@ struct JoeTVSportsView: View {
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .tracking(1.8)
                         .foregroundStyle(SeasonTheme.liveSignal)
-                    Text(scope == .live ? "Nothing is live right now." : "The next games are lining up.")
+                    Text(scope == .live ? "No live games listed." : "The next games are lining up.")
                         .font(.system(size: 40, weight: .regular, design: .serif))
                         .foregroundStyle(SeasonTheme.paper)
                     Text("Choose a view below to build the schedule.")
@@ -1449,7 +1465,7 @@ struct JoeTVSportsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 JoeTVEmptyState(
-                    title: scope == .live ? "Nothing is live right now" : "No upcoming events",
+                    title: scope == .live ? "No live games listed" : "No upcoming events listed",
                     message: scope == .live
                         ? "Upcoming includes the rest of today and tomorrow."
                         : "Joe-TV could not find a scheduled event for the selected sports.",
@@ -1575,6 +1591,7 @@ struct JoeTVSportsView: View {
     private func eventStatus(_ item: MediaItem, at date: Date) -> String {
         switch item.sportsPhase(at: date) {
         case .live: return "Live now"
+        case .unknown: return "Time unavailable"
         case .replay: return "Replay available"
         case .completed: return "Final"
         case .upcoming: break
@@ -2095,16 +2112,16 @@ private struct JoeTVESPNPlusCard: View {
             )
 
             VStack(alignment: .leading, spacing: 7) {
-                Text(phase == .replay ? "REPLAY" : "LIVE")
+                Text(phase.eyebrow)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .tracking(1.2)
-                    .foregroundStyle(phase == .replay ? SeasonTheme.paper.opacity(0.72) : SeasonTheme.liveSignal)
+                    .foregroundStyle(phase == .live ? SeasonTheme.liveSignal : SeasonTheme.paper.opacity(0.72))
                 Text(item.title)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(SeasonTheme.paper)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
-                Text(item.subtitle ?? "ESPN+")
+                Text(phase == .unknown ? "Time unavailable" : item.subtitle ?? "ESPN+")
                     .font(.system(size: 12))
                     .foregroundStyle(SeasonTheme.secondaryText)
                     .lineLimit(1)
@@ -2388,7 +2405,7 @@ private struct JoeTVBroadcastSelector: View {
                                         .font(.title3.weight(.semibold))
                                     Spacer()
                                     if group.hasMultipleModes {
-                                        Text("LIVE / START OVER")
+                                        Text(item.sportsPhase(at: Date()) == .unknown ? "STREAM / START OVER" : "LIVE / START OVER")
                                             .font(.caption.monospaced().weight(.semibold))
                                             .foregroundStyle(SeasonTheme.secondaryText)
                                     }
@@ -2431,6 +2448,9 @@ private struct JoeTVBroadcastSelector: View {
     }
 
     private var selectorSubtitle: String {
+        if item.sportsPhase(at: Date()) == .unknown {
+            return "Time unavailable. Choose an available feed."
+        }
         if let selectedGroup {
             return "\(selectedGroup.title) has both the live point and a DVR start-over feed."
         }
@@ -2440,7 +2460,11 @@ private struct JoeTVBroadcastSelector: View {
     }
 
     private var playbackModeSubtitle: String {
-        item.sportsPhase(at: Date()) == .replay ? "Play the published replay" : "Join the game at its current point"
+        switch item.sportsPhase(at: Date()) {
+        case .unknown: return "Watch the available stream"
+        case .replay: return "Play the published replay"
+        default: return "Join the game at its current point"
+        }
     }
 
     private func select(_ group: JoeTVBroadcastGroup) {
@@ -2454,6 +2478,7 @@ private struct JoeTVBroadcastSelector: View {
 
     private func playbackModeTitle(_ option: MediaItem.PlaybackOption) -> String {
         if option.isStartOver { return "Start From Beginning" }
+        if item.sportsPhase(at: Date()) == .unknown { return "Watch Stream" }
         return item.sportsPhase(at: Date()) == .replay ? "Play Replay" : "Watch Live"
     }
 
@@ -2987,6 +3012,7 @@ private struct JoeTVNFLScoreCard: View {
     }
 
     private var cardStatus: String {
+        if phase == .unknown { return "TIME UNAVAILABLE" }
         if phase == .live {
             let rawStatus = item.sportsEvent?.status ?? "Live"
             return rawStatus
@@ -3137,6 +3163,8 @@ private struct JoeTVSportsGuideCard: View {
 
     private var cardDetail: String {
         switch item.sportsPhase(at: date) {
+        case .unknown:
+            return "Time unavailable"
         case .live:
             return item.sportsEvent?.status ?? "Live coverage"
         case .upcoming:
@@ -3153,6 +3181,8 @@ private struct JoeTVSportsGuideCard: View {
 
     private var statusText: String {
         switch item.sportsPhase(at: date) {
+        case .unknown:
+            return "TIME UNAVAILABLE"
         case .live:
             return item.sportsEvent?.status?.uppercased() ?? "LIVE"
         case .upcoming:
@@ -3183,7 +3213,7 @@ private struct JoeTVScoreCard: View {
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(SeasonTheme.liveSignal)
                 Spacer()
-                Text("LIVE")
+                Text(item.sportsPhase(at: date).eyebrow)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(SeasonTheme.liveSignal)
             }
@@ -3194,7 +3224,7 @@ private struct JoeTVScoreCard: View {
                event.awayScore != nil || event.homeScore != nil {
                 JoeTVScoreLine(event: event, compact: true)
             } else {
-                Text(item.subtitle ?? "In progress")
+                Text(item.sportsPhase(at: date) == .unknown ? "Time unavailable" : item.subtitle ?? "In progress")
                     .font(.system(size: 12))
                     .foregroundStyle(SeasonTheme.secondaryText)
                     .lineLimit(1)
@@ -3236,6 +3266,7 @@ private struct JoeTVLaterCard: View {
     private var statusText: String {
         switch item.sportsPhase(at: date) {
         case .live: return "LIVE"
+        case .unknown: return "TIME UNAVAILABLE"
         case .replay: return "REPLAY AVAILABLE"
         case .completed: return "FINAL"
         case .upcoming:
@@ -3484,6 +3515,7 @@ private extension MediaItem {
 private extension SportsEventPhase {
     var eyebrow: String {
         switch self {
+        case .unknown: return "TIME UNAVAILABLE"
         case .live: return "LIVE"
         case .upcoming: return "UP NEXT"
         case .replay: return "REPLAY"
