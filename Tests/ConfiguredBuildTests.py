@@ -3,6 +3,8 @@ import importlib.util
 from pathlib import Path
 import plistlib
 import tempfile
+import sys
+sys.dont_write_bytecode = True
 import unittest
 
 spec = importlib.util.spec_from_file_location('configured_build', Path(__file__).resolve().parents[1] / 'scripts/build-configured-simulator.py')

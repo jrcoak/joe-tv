@@ -66,7 +66,7 @@ def main():
     build = root / '.build' / 'ConfiguredDerivedData'
     log = root / '.build' / 'configured-simulator-build.log'
     log.parent.mkdir(parents=True, exist_ok=True)
-    command = ['xcodebuild', '-quiet', '-project', 'Joe-TV.xcodeproj', '-scheme', 'Joe-TV',
+    command = ['xcodebuild', '-quiet', '-jobs', '2', '-project', 'Joe-TV.xcodeproj', '-scheme', 'Joe-TV',
                '-configuration', 'Debug', '-sdk', 'appletvsimulator', '-destination',
                'generic/platform=tvOS Simulator', '-derivedDataPath', str(build),
                '-xcconfig', str(config), 'CODE_SIGNING_ALLOWED=NO', 'build']
