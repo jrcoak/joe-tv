@@ -1685,6 +1685,28 @@ enum ParserSmoke {
             check(SportsCategoryClassifier.categoryID(for: studio) == nil, "Observed studio listing still included")
         }
         check(SportsCategoryClassifier.categoryID(title: "Away at Home", upstreamCategory: "NFL") == "nfl", "Studio exclusion affected genuine games")
+        func liveFootballListing(_ title: String, category: String = "nfl") -> MediaItem {
+            let event = SportsScheduleEvent(eventID: title, title: title, sport: "Football", leagueID: category,
+                league: category == "nfl" ? "NFL" : "College Football",
+                startsAt: clock.addingTimeInterval(-600), endsAt: clock.addingTimeInterval(3_600), status: "Live", venue: nil, country: nil,
+                homeTeamID: nil, homeTeam: nil, homeTeamLogoURL: nil, awayTeamID: nil, awayTeam: nil, awayTeamLogoURL: nil,
+                homeScore: nil, awayScore: nil, thumbnailURL: nil, sourceDate: nil, sourceTime: nil, broadcasts: [])
+            return MediaItem(id: title, title: title, subtitle: "Live coverage", imageURL: nil, categoryID: category,
+                playback: .drmPage(URL(string: "https://media.invalid/PlayerDRMEP/Watch?id=fixture")!), sportsEvent: event)
+        }
+        let nflGame = liveFootballListing("New England Patriots at New York Jets")
+        let collegeGame = liveFootballListing("Towson vs South Carolina", category: "college-football")
+        for (title, category) in [("NFL Total Access", "nfl"), ("NFL TOTAL ACCESS", "nfl"),
+                                  ("ACC Network Football Podcast", "college-football"), ("ACC NETWORK FOOTBALL PODCAST", "college-football")] {
+            let studio = liveFootballListing(title, category: category)
+            check(studio.sportsPhase(at: clock) == .live && studio.isPlayable, "Studio regression must exercise an otherwise live playable listing")
+            let guide = SportsEventGuidePolicy.consolidatedItems(categories: [], espnPlusItems: [studio, nflGame, collegeGame])
+            check(Set(guide.map(\.id)) == [nflGame.id, collegeGame.id] && guide.count == 2,
+                  "Observed football studio shows must be excluded without hiding games")
+            let live = SportsEventGuidePolicy.filteredItems(guide, scope: .live, selectedCategoryIDs: ["nfl", "college-football"], at: clock)
+            check(Set(live.map(\.id)) == [nflGame.id, collegeGame.id] && live.count == 2,
+                  "Studio exclusion must preserve legitimate football Live counts")
+        }
     }
 
     private static func xmltvAcceptance() {

@@ -403,7 +403,7 @@ enum SportsCategoryClassifier {
             "college football countdown", "college gameday", "monday night countdown",
             "sunday nfl countdown", "fantasy football now", "nfl live", "the huddle",
             "the insiders", "read react", "baseball tonight", "nba today", "nhl tonight",
-            "good morning football", "sec in 60", "sec in60"
+            "good morning football", "sec in 60", "sec in60", "nfl total access", "acc network football podcast"
         ].contains(where: value.contains)
     }
 }
