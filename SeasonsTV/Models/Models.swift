@@ -1061,6 +1061,112 @@ struct EPGGuideWindow: Equatable {
     let fetchedAt: Date
 }
 
+/// Combines source outcomes for one requested viewport. The window bounds describe
+/// that viewport, not a promise that every provider covers every instant in it.
+enum EPGGuideMergePolicy {
+    struct Source {
+        let channelIDs: Set<String>
+        let outcome: Outcome
+    }
+
+    enum Outcome {
+        case loaded(window: EPGGuideWindow, mappings: [ChannelStationMapping])
+        case failed(message: String)
+        case unavailable
+    }
+
+    struct Merge {
+        let state: EPGLoadState
+        let mappings: [String: String]
+    }
+
+    static func merge(
+        sources: [Source], cached: EPGGuideWindow?, cachedMappings: [String: String],
+        from start: Date, to end: Date
+    ) -> Merge {
+        let sources = sources.filter { !$0.channelIDs.isEmpty }
+        guard !sources.isEmpty else { return Merge(state: .unavailable, mappings: [:]) }
+
+        var mappings: [String: String] = [:]
+        var programs: [String: [EPGProgram]] = [:]
+        var timestamps: [Date] = []
+        var errorMessage: String?
+        var successfulStations = Set<String>()
+        var retainedMappings: [String: String] = [:]
+
+        func relevantPrograms(_ window: EPGGuideWindow, stationID: String) -> [EPGProgram] {
+            return (window.programsByStationID[stationID] ?? []).filter {
+                $0.stationID == stationID && $0.start < $0.end &&
+                $0.start < end && $0.end > start &&
+                $0.start < window.end && $0.end > window.start
+            }
+        }
+
+        for source in sources {
+            switch source.outcome {
+            case .loaded(let window, let sourceMappings):
+                // Prior claims also count: a successful empty/mapping-removal
+                // result must not resurrect its old rows through a failed source.
+                successfulStations.formUnion(source.channelIDs.compactMap { cachedMappings[$0] })
+                let acceptedMappings = sourceMappings.filter { source.channelIDs.contains($0.channelID) }
+                    .reduce(into: [String: String]()) { $0[$1.channelID] = $1.stationID }
+                successfulStations.formUnion(acceptedMappings.values)
+                mappings.merge(acceptedMappings) { _, incoming in incoming }
+                for stationID in Set(acceptedMappings.values) {
+                    programs[stationID, default: []].append(contentsOf: relevantPrograms(window, stationID: stationID))
+                }
+                // An authoritative empty publication still has known provenance.
+                timestamps.append(window.fetchedAt)
+            case .failed(let message):
+                if errorMessage == nil { errorMessage = message }
+                for channelID in source.channelIDs {
+                    if let stationID = cachedMappings[channelID] { retainedMappings[channelID] = stationID }
+                }
+            case .unavailable:
+                if errorMessage == nil { errorMessage = "Programming details are unavailable." }
+                for channelID in source.channelIDs {
+                    if let stationID = cachedMappings[channelID] { retainedMappings[channelID] = stationID }
+                }
+            }
+        }
+
+        if let cached, !retainedMappings.isEmpty {
+            // Original program times can prove useful coverage even when the old
+            // and requested viewports are disjoint. Mapping-only retention cannot.
+            let retainedPrograms = Dictionary(uniqueKeysWithValues:
+                Set(retainedMappings.values).subtracting(successfulStations).map {
+                    ($0, relevantPrograms(cached, stationID: $0))
+                }
+            )
+            let viewportsOverlap = cached.start < end && cached.end > start
+            let applicableMappings = retainedMappings.filter {
+                viewportsOverlap || !(retainedPrograms[$0.value] ?? []).isEmpty
+            }
+            if !applicableMappings.isEmpty {
+                // Successful station claims override ambiguous old shared rows.
+                mappings.merge(applicableMappings) { existing, _ in existing }
+                for stationID in Set(applicableMappings.values).subtracting(successfulStations) {
+                    programs[stationID] = retainedPrograms[stationID]
+                }
+                timestamps.append(cached.fetchedAt)
+            }
+        }
+
+        programs = programs.mapValues { rows in
+            var seen = Set<String>()
+            return rows.filter { seen.insert($0.id).inserted }.sorted {
+                $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start
+            }
+        }
+        let window = timestamps.min().map {
+            EPGGuideWindow(start: start, end: end, programsByStationID: programs, fetchedAt: $0)
+        }
+        if let errorMessage { return Merge(state: .failed(message: errorMessage, cached: window), mappings: mappings) }
+        guard let window else { return Merge(state: .unavailable, mappings: [:]) }
+        return Merge(state: .loaded(window), mappings: mappings)
+    }
+}
+
 struct EPGTimelineLayout {
     let windowStart: Date
     let windowEnd: Date

@@ -951,68 +951,43 @@ final class AppModel: ObservableObject {
         let end = Calendar.current.date(byAdding: .hour, value: 8, to: date) ?? date
         let veryLocalChannels = channels.filter { $0.id.hasPrefix("verylocal:") }
         let seasonsChannels = channels.filter { !$0.id.hasPrefix("verylocal:") }
-        var loadedResults: [(window: EPGGuideWindow, mappings: [ChannelStationMapping])] = []
-        var errors: [Error] = []
+        // Capture data and mappings together before suspension. A newer request or
+        // sign-out invalidates this entire snapshot via epgRequestID below.
+        let cachedMappings = channelStationMappings
+        var sources: [EPGGuideMergePolicy.Source] = []
 
         if !veryLocalChannels.isEmpty {
+            let outcome: EPGGuideMergePolicy.Outcome
             do {
-                loadedResults.append(
-                    try await veryLocalClient.loadGuide(
-                        for: veryLocalChannels,
-                        from: start,
-                        to: end
-                    )
-                )
+                let result = try await veryLocalClient.loadGuide(for: veryLocalChannels, from: start, to: end)
+                outcome = .loaded(window: result.window, mappings: result.mappings)
             } catch {
-                errors.append(error)
+                outcome = .failed(message: error.localizedDescription)
             }
+            sources.append(.init(channelIDs: Set(veryLocalChannels.map(\.id)), outcome: outcome))
         }
 
-        if !seasonsChannels.isEmpty, let epgProvider {
-            do {
-                loadedResults.append(
-                    try await epgProvider.loadGuide(
-                        for: seasonsChannels,
-                        from: start,
-                        to: end
-                    )
-                )
-            } catch {
-                errors.append(error)
+        if !seasonsChannels.isEmpty {
+            let outcome: EPGGuideMergePolicy.Outcome
+            if let epgProvider {
+                do {
+                    let result = try await epgProvider.loadGuide(for: seasonsChannels, from: start, to: end)
+                    outcome = .loaded(window: result.window, mappings: result.mappings)
+                } catch {
+                    outcome = .failed(message: error.localizedDescription)
+                }
+            } else {
+                outcome = .unavailable
             }
+            sources.append(.init(channelIDs: Set(seasonsChannels.map(\.id)), outcome: outcome))
         }
 
         guard epgRequestID == requestID else { return }
-        guard !loadedResults.isEmpty else {
-            epgState = .failed(
-                message: errors.first?.localizedDescription ?? "Programming details are unavailable.",
-                cached: cached
-            )
-            return
-        }
-
-        var programsByStationID: [String: [EPGProgram]] = [:]
-        var mappings: [ChannelStationMapping] = []
-        for result in loadedResults {
-            programsByStationID.merge(result.window.programsByStationID) { existing, incoming in
-                (existing + incoming).sorted { $0.start < $1.start }
-            }
-            mappings.append(contentsOf: result.mappings)
-        }
-        channelStationMappings = mappings.reduce(into: [:]) { result, mapping in
-            result[mapping.channelID] = mapping.stationID
-        }
-        let mergedWindow = EPGGuideWindow(
-            start: start,
-            end: end,
-            programsByStationID: programsByStationID,
-            fetchedAt: Date()
+        let merged = EPGGuideMergePolicy.merge(
+            sources: sources, cached: cached, cachedMappings: cachedMappings, from: start, to: end
         )
-        if let error = errors.first {
-            epgState = .failed(message: error.localizedDescription, cached: mergedWindow)
-        } else {
-            epgState = .loaded(mergedWindow)
-        }
+        channelStationMappings = merged.mappings
+        epgState = merged.state
     }
 
     func reload() async {
