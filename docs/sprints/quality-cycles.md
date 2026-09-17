@@ -1,6 +1,6 @@
 # Joe-TV quality cycles
 
-Status: two implementation cycles are assembled on local `codex/joe-tv-team`. Combined application candidate: `bbb60d6effc7536e27b931899c8915d38e6449c2`, version 1.0 / build 7. Fresh independent cache-lifecycle, parser smoke and unsigned tvOS Debug build checks passed. Final UI acceptance is **blocked by the locked Mac**, not established by the successful build. No release or production deployment has been performed.
+Status: two implementation cycles are assembled on local `codex/joe-tv-team`. Combined application candidate: `bbb60d6effc7536e27b931899c8915d38e6449c2`, version 1.0 / build 7. Fresh independent cache-lifecycle, parser smoke and unsigned tvOS Debug build checks passed. Final UI acceptance is **blocked by unavailable computer-control access**, not established by the successful build. The September 17 state inventory succeeded but Simulator selection timed out twice; current lock state is unestablished (`S2-ui-qa.md`). No release or production deployment has been performed.
 
 ## Implemented
 
@@ -15,7 +15,7 @@ Provider benchmark on a fixed synthetic 70-station / 3,360-program guide: five f
 
 Joe retained **WBZ / CBS News Boston only** as a future candidate on September 17; the other [research candidates](../research/public-stream-shortlist.md) are dropped from active consideration. WBZ’s direct integration path is unresolved. No channel was added or media endpoint probed; UI/performance work remains active.
 
-## Resume after unlock
+## Resume when UI access is available
 
 QA preserved source-specific unsigned artifacts in its worktree:
 
@@ -25,3 +25,7 @@ QA preserved source-specific unsigned artifacts in its worktree:
 Both live under `/Users/joecoakley/.codex/worktrees/5350/SeasonsTV/.build/`. PM grants the dedicated Joe-TV Team QA simulator `C95B257D-0111-40A1-9D02-2AD70D850FF8` for this resumption. Do not infer unlock or permission from elapsed time, bypass the host lock, or operate other devices. No further compilation is needed unless source or artifacts change. Any runtime defect goes to its code owner, receives a new candidate, and gets affected verification before acceptance.
 
 Rapid duplicate Back, physical Siri Remote, real media/captions/FairPlay and couch readability retain their explicit evidence limits. The original main checkout remains at `138c271` with only unrelated SHELF untracked. Repository decisions/reports and the existing seven tasks retain the team context; no recurring automation was installed.
+
+## S3 continuation
+
+Services is implementing the bounded guide merge contract in `../assignments/S3.md`: preserve applicable listings/mappings for a failed source, respect authoritative successful empty data, and stop replacing source freshness with the local merge time. S1/S2 source-specific UI artifacts remain preserved; this next source change will receive independent offline QA and its own exact candidate.
