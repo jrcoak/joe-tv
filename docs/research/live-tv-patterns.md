@@ -69,11 +69,11 @@ The comparison is intentionally selective. Joe-TV should not accumulate features
 
 ### 4. Preserve Quick Switch and make its shortcuts discoverable
 
-- **Problem:** Joe-TV's Quick Switch is strong, but last-stream recall is a hidden long-press gesture and switch reliability still has M0 gaps. Adding more gestures could make the player less predictable.
+- **Problem:** Joe-TV's Quick Switch is strong and already displays a Hold Select / Last Stream hint when applicable (`PlayerScreen.remoteControlHint`). Whether viewers notice and understand it is untested, and switch reliability still has M0 gaps. Adding more gestures could make the player less predictable.
 - **Existing Joe-TV behavior:** Down opens a combined recent/favorites rail; long Select recalls the last stream; failed preparation can restore the prior session. M0 found that pre-install resolution can outlive dismissal and that `.readyToPlay` ends rollback before media progress is established.
 - **Competitor evidence:** YouTube TV documents recent programs below the player plus long-Select last channel; Fubo documents long-Back previous channel on Apple TV; Hulu's Live destination resumes the last live channel.
-- **Adapt/preserve/defer:** preserve the current rail and Back hierarchy. Add a concise on-screen cue for Last Stream when available and make the operation cancelable before considering another shortcut. Defer blind channel surfing as the primary model and keep the existing opt-in default.
-- **Smallest validation:** prototype the hint and test first-time discovery with five scripted tasks; independently add a delayed resolver fixture for switch/back/failure before UI expansion.
+- **Adapt/preserve/defer:** preserve the current rail and Back hierarchy. Evaluate and, if needed, improve the existing on-screen Last Stream cue; make the operation cancelable before considering another shortcut. Defer blind channel surfing as the primary model and keep the existing opt-in default.
+- **Smallest validation:** test first-time discovery of the current hint with five scripted tasks, then compare a revised cue only if needed; independently add a delayed resolver fixture for switch/back/failure before UI expansion.
 - **Success criteria:** viewers can find Quick Switch and Last Stream without instruction; no focus movement tunes content; Back during resolution never reopens playback; failure preserves target and pause intent; the rail remains recents-first, favorites-second, deduplicated, and active-free.
 - **Dependencies:** Playback, Design, Services cancellation contract, App navigation, QA deterministic resolver and physical remote follow-up.
 
@@ -117,3 +117,5 @@ Across all six, preserve Joe-TV's explicit Select-to-tune behavior, stable ident
 - Google search surfaced community guides, but the comparison relies on official Help pages for core claims.
 - No responsiveness, focus quality, startup time, live latency, readability, reliability, or usability claim was measured for any competitor or Joe-TV in this assignment.
 - All proposed success criteria require future fixture, simulator, or physical-device work under the existing resource coordination rules. FairPlay, protected captions, and Siri Remote behavior still require Apple TV evidence.
+
+PM integration correction after QA review of 28e3406: recommendation 4 now explicitly recognizes the existing Last Stream hint, verified in PlayerScreen.remoteControlHint. This changes the research wording, not application behavior or evidence about cue discoverability.

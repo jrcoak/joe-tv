@@ -1,6 +1,6 @@
 # Joe-TV team roster
 
-Status: six specialist tasks established; M0 reports and R1 research integrated. PM synthesis and final independent QA are in progress.
+Status: **team established; M0/R1 complete** for setup, assessment and competitive research. Independent QA accepted the assembled documentation; all product improvements remain future-sprint proposals.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-3 (deferred product improvements, competitive research, model choice and internal standups). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
@@ -34,6 +34,6 @@ Five onboarding callbacks reached PM. App's outbound callback was rejected by au
 
 ## Current checkpoint
 
-All six baseline reports are received. Design/Playback are completing research spec acknowledgments; other specialists are idle pending bounded assignments. Final QA will review the exact assembled commit. QA's dedicated Joe-TV Team QA simulator (C95B257D-0111-40A1-9D02-2AD70D850FF8) is shut down; no team runtime session remains active.
+All six baseline reports, both TEAM-3 research reports and independent integrated QA are received. All specialist assignments are complete; reuse the recorded tasks for the next bounded milestone. QA accepted assembled commit `28e3406c7aa67787537faa53d17bbbfb0b01b8da`; report commit `82e8ea5a9dd1e68158a96fa12c294d9f106d3b75` is integrated. QA's dedicated Joe-TV Team QA simulator (C95B257D-0111-40A1-9D02-2AD70D850FF8) is shut down; no team runtime session remains active.
 
 Read [roadmap](roadmap.md), [assessment](assessments/summary.md), and [internal standup protocol](standups/README.md). Setup lives on codex/joe-tv-team and has not been merged/pushed to main. Future tasks must receive this branch/commit explicitly until integration into main is separately selected.

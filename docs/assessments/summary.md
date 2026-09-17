@@ -1,6 +1,6 @@
 # Joe-TV team assessment — integrated findings
 
-Status: specialist assessment and competitive research assembled; independent integrated-document review pending.
+Status: **M0/R1 complete for team setup, assessment and research.** Independent integrated-document QA accepted the assembled package; product implementation remains deferred.
 Spec: TEAM-3. App source: `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8`. PM also includes release commit `138c2714805ce47d26f0da5c3d9d8cf48bd488b8`, whose only app/project delta is build number 6 → 7.
 Integration branch/worktree: `codex/joe-tv-team`, `/Users/joecoakley/.codex/worktrees/joe-tv-team-pm`.
 
@@ -15,7 +15,7 @@ The team is established. The strongest next candidate is polishing everyday watc
 | Playback | [Assessment](playback.md), `c54738d`; [research](../research/live-tv-patterns.md), `23d6cfc` | Switching/lifecycle, live position, captions, YouTube TV/Hulu/Fubo patterns |
 | Services | [Assessment](services.md), `a6dcdac` | Provider/API/publisher boundaries, cache/freshness, event identity and partial failure |
 | SecOps | [Assessment](secops.md), `013b886` | Credential/destination/session boundaries, conditional risks, synthetic release-validator result |
-| QA | [Baseline report](qa.md), `cd9fc84` | Fresh smoke/build and dedicated simulator evidence; independent device/fixture matrix |
+| QA | [Baseline and integrated QA](qa.md), `cd9fc84` + `82e8ea5` | Fresh smoke/build and dedicated simulator evidence; independent device/fixture matrix |
 
 PM integrated each report sequentially. Original technical reports retain TEAM-1 provenance; Design/App added TEAM-2 priorities; TEAM-3 governs deferred improvements and competitive research. No retesting claim is created by a spec-label change.
 
@@ -40,7 +40,7 @@ PM integrated each report sequentially. Original technical reports retain TEAM-1
 | Dedicated simulator interaction | Sampled navigation, Quick Switch identity, guide without EPG, Fantasy drawer/no-live and Sports Live/Upcoming tested. Scorebug Back failed; guide return concern recorded. Empty players do not prove media behavior. |
 | Test environment cleanup | Joe-TV Team QA simulator `C95B257D-0111-40A1-9D02-2AD70D850FF8` shut down; original simulator states preserved. No authenticated provider streams opened. |
 | SecOps synthetic release guard | Seven cases executed; whitespace-only value passed shell validation but would fail runtime normalization. No real tokens read/exposed. |
-| Integrated scope | PM compared `138c271` with assembled branch: no delta in app source, tests, project or Config. Changes are docs plus an offline check wrapper. Final QA commit/evidence will be recorded below. |
+| Integrated scope | PM compared `138c271` with assembled branch: no delta in app source, tests, project or Config. Changes are docs plus an offline check wrapper. Independent QA also confirmed exact tree equivalence at reviewed commit28e3406; acceptance is recorded below. |
 | Not verified | Physical Siri Remote; FairPlay/renewal/protected captions; real media failure/cleanup/live-edge; login/session persistence; backend authorization/deployment; performance, full VoiceOver/couch/4K acceptance. |
 | Existing release | Another task owns TestFlight. Its build-7 source commit is reconciled; this work does not assert App Store processing or release acceptance. |
 
@@ -54,8 +54,10 @@ Services owns coordinated future work across the app, Personal Media API and Mac
 
 A fresh read-only coordinator completed the first [internal standup](../standups/2026-09-16.md), identifying stale status labels, overlapping cache/focus findings, and QA's evidence limits. Specialist contexts remain available; no recurring schedule is installed. PM chooses models per assignment under Joe's authorization.
 
-Current exit work: QA reviews the exact assembled docs/research/roadmap commit. All product improvements stay deferred; [roadmap package 1](../roadmap.md) is the recommended next implementation choice.
+All six specialists have completed their assigned work and may idle. All product improvements stay deferred; [roadmap package 1](../roadmap.md) is the recommended next implementation choice.
 
 ## Integrated acceptance
 
-Pending a bounded independent QA handoff. This line must be updated with the reviewed commit, outcome and remaining limitations before M0/R1 is called complete.
+QA **accepted** exact assembled commit `28e3406c7aa67787537faa53d17bbbfb0b01b8da`, with no blocking documentation fixes. Evidence is committed in `82e8ea5a9dd1e68158a96fa12c294d9f106d3b75` and integrated into PM. QA checked report provenance, 32 relative file targets across 26 documents, twenty official research URLs, scope/claim consistency and three direct official-page anchors. This is documentation acceptance, not media/device/release certification.
+
+After review, PM corrected two nonblocking facts against source: the Last Stream hint already exists, and sports detail prefetch selects up to 12 identities in two-item batches. PM also closed checkpoint status labels, recorded the QA model and cleaned decision-table formatting. Application/test/project/configuration trees remain unchanged. No new runtime pass is claimed for those document edits. Remaining hardware, media, accessibility, performance and backend checks above are future implementation/delivery dependencies.

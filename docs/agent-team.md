@@ -9,7 +9,7 @@ This adapts Joe's supplied Agent Team Specification to the existing Joe-TV appli
 | Current scope and acceptance | Joe's current request and `spec.md` |
 | Shared instructions | `AGENTS.md` |
 | Role IDs, branches, worktrees | `docs/team.md` |
-| Assignments and status | `docs/assignments/M0.md`, then one file per later milestone |
+| Assignments and status | `docs/assignments/M0.md`, `docs/assignments/R1.md`, then one file per later milestone |
 | Accepted decisions | `docs/decisions.md` |
 | Historical context | `docs/product-context.md` and its linked source task |
 | Implementation and verification | Named Git commits and exact test evidence |
