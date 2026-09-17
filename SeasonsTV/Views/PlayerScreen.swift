@@ -194,6 +194,13 @@ private struct PlayerSessionView: View {
             hideChrome()
         }
         .onChange(of: session.playbackError) { _, error in
+            if error != nil {
+                chrome.hideTask?.cancel()
+                chrome.layer = .hidden
+                passiveChromeVisible = false
+                focusedTarget = nil
+                playerFocused = false
+            }
             failureActionFocused = error != nil
         }
         .onChange(of: focusedTarget) { previous, target in
@@ -330,8 +337,13 @@ private struct PlayerSessionView: View {
                     }
                     .buttonStyle(FantasyScorebugButtonStyle())
                     .focused($focusedTarget, equals: .fantasyScorebug)
+                    .onExitCommand(perform: handleBack)
                     .onKeyPress(.downArrow) {
                         focusedTarget = lastControlFocus
+                        return .handled
+                    }
+                    .onKeyPress(.escape, phases: .down) { _ in
+                        handleBack()
                         return .handled
                     }
                     .onMoveCommand { direction in
@@ -594,6 +606,11 @@ private struct PlayerSessionView: View {
                     Spacer()
                     Button("Dismiss") { model.clearPlaybackSwitchMessage() }
                         .buttonStyle(.plain)
+                        .onExitCommand(perform: handleBack)
+                        .onKeyPress(.escape, phases: .down) { _ in
+                            handleBack()
+                            return .handled
+                        }
                 }
                 .padding(.horizontal, 16)
                 .frame(height: 44)
@@ -693,6 +710,11 @@ private struct PlayerSessionView: View {
             Button("Return to Browse") { model.dismissPlayback() }
                 .buttonStyle(FocusPillButtonStyle(isSelected: true))
                 .focused($failureActionFocused)
+                .onExitCommand(perform: handleBack)
+                .onKeyPress(.escape, phases: .down) { _ in
+                    handleBack()
+                    return .handled
+                }
         }
         .padding(42)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26))
