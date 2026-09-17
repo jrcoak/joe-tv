@@ -1,5 +1,9 @@
 # Joe-TV
 
+## Agent team
+
+Work with **Joe-TV · PM / Integrator** for ideas, bugs, and delivery. PM coordinates Product Design, tvOS App, Playback, Services, QA, and SecOps. See [product scope](spec.md), [team roster](docs/team.md), [operating model](docs/agent-team.md), and [current milestone](docs/assignments/M0.md). Each specialist works in an isolated checkout; the existing application and user preferences are preserved.
+
 A native SwiftUI tvOS client for a user's existing Seasons4U membership. The UI is adapted from the website's dark, editorial player design for Siri Remote focus navigation and native `AVPlayer` playback.
 
 For architecture, authentication, parser contracts, FairPlay behavior, design decisions, verification status, known risks, and the contributor handoff, see [`docs/TECHNICAL_HANDOFF.md`](docs/TECHNICAL_HANDOFF.md).

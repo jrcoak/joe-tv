@@ -1,5 +1,7 @@
 # SeasonsTV Technical Handoff
 
+> Historical technical reference. Some feature/status descriptions predate the current app. Incoming team members should start with [spec.md](../spec.md) and [product context](product-context.md), then check the current source and assessment evidence. Prior test results are not current-baseline verification.
+
 Last updated: August 15, 2026
 
 ## 1. Purpose and current scope

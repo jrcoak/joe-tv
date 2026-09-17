@@ -14,4 +14,6 @@
 | TEAM-010 | Add SecOps as the sixth specialist, for seven roles including PM. Include security in design, implementation, and release review. | Joe explicitly requested a SecOps agent. |
 | TEAM-011 | Begin from app commit `c08e551038bfbeaf7d2fdcc60c0b3e3021cd25b8` in a separate integration worktree while the original task finishes TestFlight. Its build-7 project-file change remains untouched. | Joe confirmed the commit is done and told setup to start. |
 
+| TEAM-012 | Integrate release task commit `138c2714805ce47d26f0da5c3d9d8cf48bd488b8` (build number 7) into PM branch. Specialist assessment source remains c08e551 plus bootstrap 314968d; the only release delta is the build number. | Fresh Git inspection; original checkout stays untouched. |
+
 Product history and superseded alternatives are summarized separately in `product-context.md`. New accepted choices receive a dated entry with rationale and source; proposals are not silently added to this table.

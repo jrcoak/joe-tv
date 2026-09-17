@@ -1,5 +1,7 @@
 # Joe-TV design implementation
 
+> Historical design implementation reference. Later Joe decisions supersede some feature-status statements below; see [current product context](docs/product-context.md) and [specification](spec.md).
+
 This document maps the delivered design proposal to the production tvOS app. It is deliberately honest about which surfaces use real app capabilities today and which concepts need product or backend work before they should appear in the interface.
 
 ## Implemented in the app
