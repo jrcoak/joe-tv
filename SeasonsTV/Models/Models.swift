@@ -1298,6 +1298,44 @@ struct PlaybackSubtitleOption: Identifiable, Equatable {
     let isClosedCaption: Bool
 }
 
+enum PlaybackCaptionSelection {
+    static func preferredOptionID(
+        from options: [PlaybackSubtitleOption],
+        preferredLanguages: [String]
+    ) -> String? {
+        options.enumerated().min { left, right in
+            selectionRank(for: left.element, index: left.offset, preferredLanguages: preferredLanguages)
+                < selectionRank(for: right.element, index: right.offset, preferredLanguages: preferredLanguages)
+        }?.element.id
+    }
+
+    private static func selectionRank(
+        for option: PlaybackSubtitleOption,
+        index: Int,
+        preferredLanguages: [String]
+    ) -> (Int, Int, Int) {
+        let unmatchedLanguageRank = preferredLanguages.count * 2 + 2
+        let languageRank = option.languageCode.flatMap { optionLanguage in
+            preferredLanguages.enumerated().compactMap { preferenceIndex, preferredLanguage -> Int? in
+                let optionTag = normalizedLanguageTag(optionLanguage)
+                let preferredTag = normalizedLanguageTag(preferredLanguage)
+                if optionTag == preferredTag { return preferenceIndex * 2 }
+                if baseLanguage(optionTag) == baseLanguage(preferredTag) { return preferenceIndex * 2 + 1 }
+                return nil
+            }.min()
+        } ?? unmatchedLanguageRank
+        return (languageRank, option.isClosedCaption ? 0 : 1, index)
+    }
+
+    private static func normalizedLanguageTag(_ value: String) -> String {
+        value.replacingOccurrences(of: "_", with: "-").lowercased()
+    }
+
+    private static func baseLanguage(_ value: String) -> Substring {
+        value.split(separator: "-", maxSplits: 1).first ?? ""
+    }
+}
+
 enum PlaybackAutoCaptionMode: String, CaseIterable, Identifiable {
     case disabled
     case zeroPercent
@@ -1421,11 +1459,12 @@ final class PlaybackSession: ObservableObject, Identifiable {
     private var statusObservation: NSKeyValueObservation?
     private var preparationTimeout: Task<Void, Never>?
     private var subtitleLoadTask: Task<Void, Never>?
+    private var subtitleGroupObservation: NSObjectProtocol?
     private var subtitleGroup: AVMediaSelectionGroup?
     private var subtitleMediaOptions: [String: AVMediaSelectionOption] = [:]
+    private var manuallySelectedSubtitleOptionID: String?
     private var captionPolicyState = PlaybackCaptionPolicyState()
     private var lastOutputVolume: Float?
-    private var didInstallInitialCaptionSelection = false
     private var didPositionAtLiveEdge = false
     private var readyHandler: (() -> Void)?
     private var failureHandler: ((String) -> Void)?
@@ -1477,14 +1516,23 @@ final class PlaybackSession: ObservableObject, Identifiable {
 
     private static func makePlayer(item: AVPlayerItem) -> AVPlayer {
         let player = AVPlayer()
-        // Hold automatic selection only until the legible group is explicitly Off.
-        // Restoring it afterward preserves the system's preferred audible track.
-        player.appliesMediaSelectionCriteriaAutomatically = false
         player.replaceCurrentItem(with: item)
         return player
     }
 
     private func monitor(_ item: AVPlayerItem) {
+        subtitleGroupObservation = NotificationCenter.default.addObserver(
+            forName: .AVAssetMediaSelectionGroupsDidChange,
+            object: item.asset,
+            queue: .main
+        ) { [weak self, weak item] _ in
+            Task { @MainActor [weak self, weak item] in
+                guard let self,
+                      let item,
+                      item === self.player.currentItem else { return }
+                self.refreshSubtitleOptions()
+            }
+        }
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
             let statusRawValue = item.status.rawValue
             let error = item.error as NSError?
@@ -1549,23 +1597,27 @@ final class PlaybackSession: ObservableObject, Identifiable {
 
         let asset = item.asset
         subtitleLoadTask = Task { @MainActor [weak self, weak item] in
-            do {
-                let group = try await asset.loadMediaSelectionGroup(for: .legible)
-                guard !Task.isCancelled,
-                      let self,
-                      let item,
-                      item === self.player.currentItem else { return }
-                if let group {
-                    self.installSubtitleOptions(group, for: item)
-                } else {
-                    self.clearSubtitleOptions()
-                    if self.isReady { self.completeInitialCaptionSelection() }
+            for attempt in 0..<3 {
+                do {
+                    let group = try await asset.loadMediaSelectionGroup(for: .legible)
+                    guard !Task.isCancelled,
+                          let self,
+                          let item,
+                          item === self.player.currentItem else { return }
+                    if let group {
+                        self.installSubtitleOptions(group, for: item)
+                    } else if self.subtitleGroup == nil {
+                        self.clearSubtitleOptions()
+                    }
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    // Keep any usable group and retry transient initial failures.
+                    // Later dynamic group changes also trigger a fresh load.
+                    guard attempt < 2 else { return }
+                    let delay = attempt == 0 ? 250 : 500
+                    try? await Task.sleep(for: .milliseconds(delay))
                 }
-            } catch {
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
-                self.clearSubtitleOptions()
-                if self.isReady { self.completeInitialCaptionSelection() }
             }
         }
     }
@@ -1578,10 +1630,12 @@ final class PlaybackSession: ObservableObject, Identifiable {
            let option = subtitleMediaOptions[identifier] {
             item.select(option, in: subtitleGroup)
             selectedSubtitleOptionID = identifier
+            manuallySelectedSubtitleOptionID = identifier
             PlaybackCaptionPolicy.selectManualTrack(state: &captionPolicyState)
         } else if subtitleGroup.allowsEmptySelection {
             item.select(nil, in: subtitleGroup)
             selectedSubtitleOptionID = nil
+            manuallySelectedSubtitleOptionID = nil
             PlaybackCaptionPolicy.selectManualOff(state: &captionPolicyState)
         }
     }
@@ -1627,15 +1681,23 @@ final class PlaybackSession: ObservableObject, Identifiable {
         subtitleGroup = group
         subtitleOptions = entries.map { $0.0 }
         subtitleMediaOptions = Dictionary(uniqueKeysWithValues: entries.map { ($0.0.id, $0.1) })
+        canDisableSubtitles = group.allowsEmptySelection
 
-        if !didInstallInitialCaptionSelection {
-            canDisableSubtitles = group.allowsEmptySelection
-            if canDisableSubtitles { item.select(nil, in: group) }
-            didInstallInitialCaptionSelection = true
-            player.appliesMediaSelectionCriteriaAutomatically = true
-        }
-
-        if let selected = item.currentMediaSelection.selectedMediaOption(in: group) {
+        if captionPolicyState.manualCaptionSelected,
+           let manuallySelectedSubtitleOptionID,
+           let option = subtitleMediaOptions[manuallySelectedSubtitleOptionID] {
+            item.select(option, in: group)
+            selectedSubtitleOptionID = manuallySelectedSubtitleOptionID
+        } else if captionPolicyState.automaticCaptionsActive {
+            if !selectPreferredAutomaticSubtitle(for: item, in: group) {
+                PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
+            }
+        } else if group.allowsEmptySelection {
+            // Reinstall the group-specific Off override whenever a late or changed
+            // legible group appears. Audible automatic selection remains enabled.
+            item.select(nil, in: group)
+            selectedSubtitleOptionID = nil
+        } else if let selected = item.currentMediaSelection.selectedMediaOption(in: group) {
             selectedSubtitleOptionID = entries.first(where: { $0.1.isEqual(selected) })?.0.id
         } else {
             selectedSubtitleOptionID = nil
@@ -1650,12 +1712,6 @@ final class PlaybackSession: ObservableObject, Identifiable {
         selectedSubtitleOptionID = nil
         canDisableSubtitles = false
         PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
-    }
-
-    private func completeInitialCaptionSelection() {
-        guard !didInstallInitialCaptionSelection else { return }
-        didInstallInitialCaptionSelection = true
-        player.appliesMediaSelectionCriteriaAutomatically = true
     }
 
     private func evaluateAutomaticCaptions() {
@@ -1679,19 +1735,30 @@ final class PlaybackSession: ObservableObject, Identifiable {
         case .none:
             break
         case .selectAutomatic:
-            guard let entry = subtitleOptions.first(where: \.isClosedCaption)
-                    ?? subtitleOptions.first,
-                  let option = subtitleMediaOptions[entry.id] else {
+            guard selectPreferredAutomaticSubtitle(for: item, in: subtitleGroup) else {
                 PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
                 return
             }
-            item.select(option, in: subtitleGroup)
-            selectedSubtitleOptionID = entry.id
         case .selectOff:
             guard subtitleGroup.allowsEmptySelection else { return }
             item.select(nil, in: subtitleGroup)
             selectedSubtitleOptionID = nil
         }
+    }
+
+    private func selectPreferredAutomaticSubtitle(
+        for item: AVPlayerItem,
+        in group: AVMediaSelectionGroup
+    ) -> Bool {
+        let criteriaLanguages = player.mediaSelectionCriteria(forMediaCharacteristic: .legible)?.preferredLanguages
+        let preferredLanguages = criteriaLanguages.flatMap { $0.isEmpty ? nil : $0 } ?? Locale.preferredLanguages
+        guard let identifier = PlaybackCaptionSelection.preferredOptionID(
+            from: subtitleOptions,
+            preferredLanguages: preferredLanguages
+        ), let option = subtitleMediaOptions[identifier] else { return false }
+        item.select(option, in: group)
+        selectedSubtitleOptionID = identifier
+        return true
     }
 
     private func startPreparationTimeout() {
@@ -1772,6 +1839,9 @@ final class PlaybackSession: ObservableObject, Identifiable {
     deinit {
         preparationTimeout?.cancel()
         subtitleLoadTask?.cancel()
+        if let subtitleGroupObservation {
+            NotificationCenter.default.removeObserver(subtitleGroupObservation)
+        }
     }
 }
 

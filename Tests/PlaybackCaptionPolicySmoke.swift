@@ -65,6 +65,23 @@ private enum PlaybackCaptionPolicySmoke {
 
         check(Set(PlaybackAutoCaptionMode.allCases.map(\.rawValue)).count == PlaybackAutoCaptionMode.allCases.count,
               "Persistent mode values are not unique")
+
+        let selectionOptions = [
+            PlaybackSubtitleOption(id: "es-cc", title: "Español CC", languageCode: "es", isClosedCaption: true),
+            PlaybackSubtitleOption(id: "en", title: "English", languageCode: "en-US", isClosedCaption: false),
+            PlaybackSubtitleOption(id: "en-cc", title: "English CC", languageCode: "en-GB", isClosedCaption: true),
+            PlaybackSubtitleOption(id: "fr-cc", title: "Français CC", languageCode: "fr", isClosedCaption: true)
+        ]
+        check(PlaybackCaptionSelection.preferredOptionID(from: selectionOptions, preferredLanguages: ["en-US"]) == "en",
+              "Exact preferred language did not outrank accessibility characteristics")
+        check(PlaybackCaptionSelection.preferredOptionID(from: selectionOptions, preferredLanguages: ["en-CA"]) == "en-cc",
+              "Accessibility preference did not break a base-language tie")
+        check(PlaybackCaptionSelection.preferredOptionID(from: selectionOptions, preferredLanguages: ["fr", "en"]) == "fr-cc",
+              "Preferred language ordering was ignored")
+        check(PlaybackCaptionSelection.preferredOptionID(from: selectionOptions, preferredLanguages: ["de"]) == "es-cc",
+              "Deterministic accessibility fallback changed")
+        check(PlaybackCaptionSelection.preferredOptionID(from: [], preferredLanguages: ["en"]) == nil,
+              "Empty options produced an automatic selection")
         print("Playback caption policy smoke passed (\(checks) checks)")
     }
 }
