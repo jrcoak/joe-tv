@@ -33,3 +33,9 @@ Artifact: `.build/S6SimulatorDerivedData/Build/Products/Debug-appletvsimulator/J
 Remaining evidence limits: physical Siri Remote/TV/receiver volume reporting, remote mute signaling, FairPlay playback, and dynamic HLS group changes were not exercised. IR-controlled TV volume may not be observable, so the app cannot promise automatic captions for that route. Nonempty/required legible groups cannot offer normal Off selection and remain a media-format limit documented by Playback. No provider credentials, real provider streams, remote service changes, push or TestFlight upload were used.
 
 Final normal-volume session also manually selected EnglishCC and visibly rendered Bip/Bop, verifying manual captions after the rendering guard was removed. Cleanup stopped the public sample and returned the dedicated simulator to shutdown, preserving app data. Runtime ownership is released. App, Playback and QA have completed their bounded assignments; no new work was dispatched.
+
+## Independent-controls follow-up
+
+Joe requested separate captions-on-mute and low-volume threshold settings. Mute captions default On; the optional threshold defaults Off unless an explicit prior choice exists. Automatic captions restore Off when neither enabled condition applies, at the exact threshold boundary, while manual On survives. Playback owns the bounded implementation on its existing branch; PM handles source review and native acceptance.
+
+New PM runtime grant: sole operator of dedicated base QA simulator C95B257D-0111-40A1-9D02-2AD70D850FF8 for up to 20 minutes or final follow-up acceptance, whichever checkpoint arrives first. Public Apple clear-caption sample and DEBUG volume injection only. Other simulators and provider accounts excluded. PM stops media and returns QA to shutdown afterward, preserving saved data.

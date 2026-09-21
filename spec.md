@@ -28,7 +28,7 @@ For M0, prioritize an evidence-backed friction map and before/after interaction 
 - Twenty-six sports categories with separate professional/college/women's categories, Pickleball, and Wrestling/WWE. Preserve migration of old filters; unmatched/Volleyball events fall under Other.
 - Baseball-family Home/Away/National feed choices; live streams start near live edge; scheduled coverage becomes available 15 minutes before game time when a playable source exists. Match events by date and stable identity.
 - Quick Switch with up to four recent streams followed by favorites, no active-stream card or duplicates, fresh stream resolution, and recovery on a failed switch.
-- Captions/subtitle selection when supplied by a stream, with understandable unavailable state.
+- Captions/subtitle selection when supplied by a stream, with understandable unavailable state. Each playback starts Off. Captions on mute is independently enabled by default; optional low-volume captions have a separate Off/5%/10%/20% threshold. Automatically enabled captions return to Off when neither enabled condition applies; manual caption choices take priority. These triggers require observable device-volume signals and apply only to full-screen playback.
 - Optional Fantasy Zone: Sleeper username onboarding, live NFL data, RedZone/NFL Network options, full-width video with a compact scorebug, and a translucent two-tab Matchup/League drawer. No ungrounded win-probability bar.
 - Internal TestFlight delivery with permanent bundle ID `com.jrcoak.joetv`. Maintain preferences across builds and keep private configuration out of Git.
 
