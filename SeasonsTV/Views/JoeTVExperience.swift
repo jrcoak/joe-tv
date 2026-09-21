@@ -809,21 +809,21 @@ struct JoeTVGuideMetrics: Equatable {
             unavailableFontSize = 14
             minimumProgramWidth = 94
         case .large:
-            channelWidth = 300
-            rowHeight = 90
+            channelWidth = 330
+            rowHeight = 94
             rulerHeight = 44
             pointsPerMinute = 8
-            gridHeight = 555
+            gridHeight = 600
             channelLogoWidth = 86
             channelLogoHeight = 54
-            channelFontSize = 20
+            channelFontSize = 24
             channelLineLimit = 2
-            channelHeaderFontSize = 14
-            rulerFontSize = 15
-            programFontSize = 18
+            channelHeaderFontSize = 16
+            rulerFontSize = 20
+            programFontSize = 24
             programLineLimit = 2
-            programTimeFontSize = 13
-            unavailableFontSize = 17
+            programTimeFontSize = 18
+            unavailableFontSize = 22
             minimumProgramWidth = 112
         }
     }

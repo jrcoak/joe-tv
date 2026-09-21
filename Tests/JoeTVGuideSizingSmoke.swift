@@ -26,6 +26,13 @@ import Foundation
         let visibleLargeRows = (large.gridHeight - large.rulerHeight) / large.rowHeight
         check(visibleLargeRows >= 5.5 && visibleLargeRows < 6,
             "Large guide no longer presents roughly six readable rows")
+        check(large.channelWidth == 330 && large.rowHeight == 94
+            && large.rulerHeight == 44 && large.gridHeight == 600,
+            "Large guide geometry changed from native acceptance")
+        check(large.channelFontSize == 24 && large.channelHeaderFontSize == 16
+            && large.rulerFontSize == 20 && large.programFontSize == 24
+            && large.programTimeFontSize == 18 && large.unavailableFontSize == 22,
+            "Large guide typography changed from native acceptance")
         check(large.channelFontSize > standard.channelFontSize
             && large.programFontSize > standard.programFontSize
             && large.programTimeFontSize > standard.programTimeFontSize
