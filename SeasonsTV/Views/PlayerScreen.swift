@@ -1,4 +1,5 @@
 import AVKit
+import AVFAudio
 import SwiftUI
 import UIKit
 
@@ -33,6 +34,33 @@ private final class PlayerChromeModel: ObservableObject {
     }
 }
 
+@MainActor
+private final class PlayerOutputVolumeMonitor: ObservableObject {
+    @Published private(set) var outputVolume: Float?
+    private var observation: NSKeyValueObservation?
+
+    func start() {
+        guard observation == nil else { return }
+        let audioSession = AVAudioSession.sharedInstance()
+        observation = audioSession.observe(\.outputVolume, options: [.initial, .new]) { [weak self] _, change in
+            let value = change.newValue
+            Task { @MainActor [weak self] in
+                guard let value, value.isFinite, (0...1).contains(value) else {
+                    self?.outputVolume = nil
+                    return
+                }
+                self?.outputVolume = value
+            }
+        }
+    }
+
+    func stop() {
+        observation?.invalidate()
+        observation = nil
+        outputVolume = nil
+    }
+}
+
 struct PlayerScreen: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var chrome = PlayerChromeModel()
@@ -61,8 +89,10 @@ private struct PlayerSessionView: View {
 
     @ObservedObject var session: PlaybackSession
     @ObservedObject var chrome: PlayerChromeModel
+    @StateObject private var outputVolumeMonitor = PlayerOutputVolumeMonitor()
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("player.autoCaptions.mode") private var autoCaptionModeRawValue = PlaybackAutoCaptionMode.tenPercent.rawValue
     @FocusState private var failureActionFocused: Bool
     @FocusState private var playerFocused: Bool
     @FocusState private var focusedTarget: FocusTarget?
@@ -169,6 +199,9 @@ private struct PlayerSessionView: View {
         .focusable(session.playbackError == nil && chrome.layer == .hidden)
         .focused($playerFocused)
         .onAppear {
+            session.setAutoCaptionMode(autoCaptionMode)
+            outputVolumeMonitor.start()
+            session.updateAutoCaptionOutputVolume(outputVolumeMonitor.outputVolume)
             session.player.play()
             playerFocused = true
             passiveChromeVisible = true
@@ -177,8 +210,12 @@ private struct PlayerSessionView: View {
         .onDisappear {
             chrome.hideTask?.cancel()
             channelSurfMessageTask?.cancel()
+            outputVolumeMonitor.stop()
+            session.updateAutoCaptionOutputVolume(nil)
         }
         .onChange(of: session.id) { _, _ in
+            session.setAutoCaptionMode(autoCaptionMode)
+            session.updateAutoCaptionOutputVolume(outputVolumeMonitor.outputVolume)
             session.player.play()
             isPaused = false
             captionsPresented = false
@@ -242,6 +279,12 @@ private struct PlayerSessionView: View {
                 scheduleChromeHide(after: 10)
             }
         }
+        .onChange(of: outputVolumeMonitor.outputVolume) { _, outputVolume in
+            session.updateAutoCaptionOutputVolume(outputVolume)
+        }
+        .onChange(of: autoCaptionModeRawValue) { _, _ in
+            session.setAutoCaptionMode(autoCaptionMode)
+        }
         .confirmationDialog(
             "Subtitles & Captions",
             isPresented: $captionsPresented,
@@ -251,8 +294,10 @@ private struct PlayerSessionView: View {
                 Button("No captions available") {}
                     .disabled(true)
             } else {
-                Button(session.selectedSubtitleOptionID == nil ? "Off  ✓" : "Off") {
-                    session.selectSubtitle(nil)
+                if session.canDisableSubtitles {
+                    Button(session.selectedSubtitleOptionID == nil ? "Off  ✓" : "Off") {
+                        session.selectSubtitle(nil)
+                    }
                 }
                 ForEach(session.subtitleOptions) { option in
                     Button(session.selectedSubtitleOptionID == option.id ? "\(option.title)  ✓" : option.title) {
@@ -260,8 +305,13 @@ private struct PlayerSessionView: View {
                     }
                 }
             }
+            ForEach(PlaybackAutoCaptionMode.allCases) { mode in
+                Button(autoCaptionButtonTitle(mode)) {
+                    autoCaptionModeRawValue = mode.rawValue
+                }
+            }
         } message: {
-            Text("Choose a caption track for this stream.")
+            Text("Choose a track or an automatic device-volume threshold. TV or receiver volume may not be visible to Apple TV.")
         }
         .onExitCommand(perform: handlePlayerBack)
         .onPlayPauseCommand(perform: togglePlayback)
@@ -310,6 +360,15 @@ private struct PlayerSessionView: View {
     private var playbackSurface: some View {
         PlayerSurface(player: session.player)
             .ignoresSafeArea()
+    }
+
+    private var autoCaptionMode: PlaybackAutoCaptionMode {
+        PlaybackAutoCaptionMode(rawValue: autoCaptionModeRawValue) ?? .tenPercent
+    }
+
+    private func autoCaptionButtonTitle(_ mode: PlaybackAutoCaptionMode) -> String {
+        let title = "Automatic: \(mode.title)"
+        return autoCaptionMode == mode ? "\(title)  ✓" : title
     }
 
     @ViewBuilder
@@ -541,30 +600,28 @@ private struct PlayerSessionView: View {
                 .onMoveCommand(perform: handleControlMove)
                 .accessibilityIdentifier("player.control.guide")
 
-                if !session.subtitleOptions.isEmpty {
-                    Button {
-                        session.refreshSubtitleOptions()
-                        captionsPresented = true
-                    } label: {
-                        Label(
-                            session.selectedSubtitleTitle ?? "Captions",
-                            systemImage: "captions.bubble"
-                        )
-                    }
-                    .buttonStyle(PlayerControlButtonStyle())
-                    .focused($focusedTarget, equals: .captions)
-                    .onExitCommand(perform: handleBack)
-                    .onKeyPress(.upArrow) { handleControlUp() }
-                    .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
-                    .onKeyPress(.escape, phases: .down) { _ in
-                        handleBack()
-                        return .handled
-                    }
-                    .onMoveCommand(perform: handleControlMove)
-                    .accessibilityLabel("Subtitles and captions")
-                    .accessibilityValue(session.selectedSubtitleTitle ?? "Off")
-                    .accessibilityIdentifier("player.control.captions")
+                Button {
+                    session.refreshSubtitleOptions()
+                    captionsPresented = true
+                } label: {
+                    Label(
+                        session.selectedSubtitleTitle ?? "Captions",
+                        systemImage: "captions.bubble"
+                    )
                 }
+                .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedTarget, equals: .captions)
+                .onExitCommand(perform: handleBack)
+                .onKeyPress(.upArrow) { handleControlUp() }
+                .onKeyPress(.downArrow, phases: .down) { _ in handleDown() }
+                .onKeyPress(.escape, phases: .down) { _ in
+                    handleBack()
+                    return .handled
+                }
+                .onMoveCommand(perform: handleControlMove)
+                .accessibilityLabel("Subtitles and captions")
+                .accessibilityValue(session.selectedSubtitleTitle ?? "Off; automatic \(autoCaptionMode.title)")
+                .accessibilityIdentifier("player.control.captions")
 
                 Spacer()
 
@@ -804,9 +861,7 @@ private struct PlayerSessionView: View {
             targets.append(.favorite)
         }
         targets.append(.guide)
-        if !session.subtitleOptions.isEmpty {
-            targets.append(.captions)
-        }
+        targets.append(.captions)
         return targets
     }
 

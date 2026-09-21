@@ -1298,6 +1298,112 @@ struct PlaybackSubtitleOption: Identifiable, Equatable {
     let isClosedCaption: Bool
 }
 
+enum PlaybackAutoCaptionMode: String, CaseIterable, Identifiable {
+    case disabled
+    case zeroPercent
+    case fivePercent
+    case tenPercent
+    case twentyPercent
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .disabled: return "Off"
+        case .zeroPercent: return "Muted / 0%"
+        case .fivePercent: return "5% or lower"
+        case .tenPercent: return "10% or lower"
+        case .twentyPercent: return "20% or lower"
+        }
+    }
+    fileprivate var enterThreshold: Float? {
+        switch self {
+        case .disabled: return nil
+        case .zeroPercent: return 0
+        case .fivePercent: return 0.05
+        case .tenPercent: return 0.10
+        case .twentyPercent: return 0.20
+        }
+    }
+    fileprivate var exitThreshold: Float? {
+        enterThreshold.map { min(1, $0 + 0.02) }
+    }
+}
+
+enum PlaybackCaptionPolicyAction: Equatable {
+    case none
+    case selectAutomatic
+    case selectOff
+}
+
+struct PlaybackCaptionPolicyState: Equatable {
+    fileprivate(set) var quietEpisodeActive = false
+    fileprivate(set) var manualOffSuppressed = false
+    fileprivate(set) var automaticCaptionsActive = false
+    fileprivate(set) var manualCaptionSelected = false
+}
+
+enum PlaybackCaptionPolicy {
+    static func update(
+        mode: PlaybackAutoCaptionMode,
+        outputVolume: Float?,
+        state: inout PlaybackCaptionPolicyState
+    ) -> PlaybackCaptionPolicyAction {
+        guard let enter = mode.enterThreshold,
+              let exit = mode.exitThreshold,
+              let outputVolume,
+              outputVolume.isFinite,
+              (0...1).contains(outputVolume) else {
+            return endQuietEpisode(state: &state)
+        }
+
+        if state.quietEpisodeActive {
+            guard outputVolume <= exit else { return endQuietEpisode(state: &state) }
+        } else if outputVolume <= enter {
+            state.quietEpisodeActive = true
+            state.manualOffSuppressed = false
+        } else {
+            return .none
+        }
+
+        guard !state.manualCaptionSelected,
+              !state.manualOffSuppressed,
+              !state.automaticCaptionsActive else { return .none }
+        state.automaticCaptionsActive = true
+        return .selectAutomatic
+    }
+
+    static func selectManualTrack(state: inout PlaybackCaptionPolicyState) {
+        state.manualCaptionSelected = true
+        state.automaticCaptionsActive = false
+    }
+
+    static func selectManualOff(state: inout PlaybackCaptionPolicyState) {
+        state.manualCaptionSelected = false
+        state.automaticCaptionsActive = false
+        if state.quietEpisodeActive { state.manualOffSuppressed = true }
+    }
+
+    static func changeMode(state: inout PlaybackCaptionPolicyState) -> PlaybackCaptionPolicyAction {
+        let action: PlaybackCaptionPolicyAction = state.automaticCaptionsActive ? .selectOff : .none
+        state.quietEpisodeActive = false
+        state.manualOffSuppressed = false
+        state.automaticCaptionsActive = false
+        return action
+    }
+
+    static func automaticSelectionUnavailable(state: inout PlaybackCaptionPolicyState) {
+        state.automaticCaptionsActive = false
+    }
+
+    private static func endQuietEpisode(state: inout PlaybackCaptionPolicyState) -> PlaybackCaptionPolicyAction {
+        let action: PlaybackCaptionPolicyAction = state.automaticCaptionsActive && !state.manualCaptionSelected ? .selectOff : .none
+        state.quietEpisodeActive = false
+        state.manualOffSuppressed = false
+        state.automaticCaptionsActive = false
+        return action
+    }
+}
+
 @MainActor
 final class PlaybackSession: ObservableObject, Identifiable {
     let id = UUID()
@@ -1308,6 +1414,8 @@ final class PlaybackSession: ObservableObject, Identifiable {
     @Published private(set) var isReady = false
     @Published private(set) var subtitleOptions: [PlaybackSubtitleOption] = []
     @Published private(set) var selectedSubtitleOptionID: String?
+    @Published private(set) var canDisableSubtitles = false
+    @Published private(set) var autoCaptionMode: PlaybackAutoCaptionMode = .disabled
     private let startAtLiveEdge: Bool
     private let resourceLoader: FairPlayResourceLoader?
     private var statusObservation: NSKeyValueObservation?
@@ -1315,6 +1423,9 @@ final class PlaybackSession: ObservableObject, Identifiable {
     private var subtitleLoadTask: Task<Void, Never>?
     private var subtitleGroup: AVMediaSelectionGroup?
     private var subtitleMediaOptions: [String: AVMediaSelectionOption] = [:]
+    private var captionPolicyState = PlaybackCaptionPolicyState()
+    private var lastOutputVolume: Float?
+    private var didInstallInitialCaptionSelection = false
     private var didPositionAtLiveEdge = false
     private var readyHandler: (() -> Void)?
     private var failureHandler: ((String) -> Void)?
@@ -1325,10 +1436,11 @@ final class PlaybackSession: ObservableObject, Identifiable {
         self.isLivePlayback = startAtLiveEdge
         let item = AVPlayerItem(url: url)
         item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
-        self.player = AVPlayer(playerItem: item)
+        self.player = Self.makePlayer(item: item)
         self.resourceLoader = nil
         monitor(item)
         startPreparationTimeout()
+        refreshSubtitleOptions()
     }
 
     #if DEBUG
@@ -1357,9 +1469,19 @@ final class PlaybackSession: ObservableObject, Identifiable {
         self.resourceLoader = loader
         let item = AVPlayerItem(asset: asset)
         item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
-        self.player = AVPlayer(playerItem: item)
+        self.player = Self.makePlayer(item: item)
         monitor(item)
         startPreparationTimeout()
+        refreshSubtitleOptions()
+    }
+
+    private static func makePlayer(item: AVPlayerItem) -> AVPlayer {
+        let player = AVPlayer()
+        // Hold automatic selection only until the legible group is explicitly Off.
+        // Restoring it afterward preserves the system's preferred audible track.
+        player.appliesMediaSelectionCriteriaAutomatically = false
+        player.replaceCurrentItem(with: item)
+        return player
     }
 
     private func monitor(_ item: AVPlayerItem) {
@@ -1428,15 +1550,22 @@ final class PlaybackSession: ObservableObject, Identifiable {
         let asset = item.asset
         subtitleLoadTask = Task { @MainActor [weak self, weak item] in
             do {
-                guard let group = try await asset.loadMediaSelectionGroup(for: .legible),
-                      !Task.isCancelled,
+                let group = try await asset.loadMediaSelectionGroup(for: .legible)
+                guard !Task.isCancelled,
                       let self,
                       let item,
                       item === self.player.currentItem else { return }
-                self.installSubtitleOptions(group, for: item)
+                if let group {
+                    self.installSubtitleOptions(group, for: item)
+                } else {
+                    self.clearSubtitleOptions()
+                    if self.isReady { self.completeInitialCaptionSelection() }
+                }
             } catch {
                 guard !Task.isCancelled else { return }
-                self?.clearSubtitleOptions()
+                guard let self else { return }
+                self.clearSubtitleOptions()
+                if self.isReady { self.completeInitialCaptionSelection() }
             }
         }
     }
@@ -1449,10 +1578,27 @@ final class PlaybackSession: ObservableObject, Identifiable {
            let option = subtitleMediaOptions[identifier] {
             item.select(option, in: subtitleGroup)
             selectedSubtitleOptionID = identifier
+            PlaybackCaptionPolicy.selectManualTrack(state: &captionPolicyState)
         } else if subtitleGroup.allowsEmptySelection {
             item.select(nil, in: subtitleGroup)
             selectedSubtitleOptionID = nil
+            PlaybackCaptionPolicy.selectManualOff(state: &captionPolicyState)
         }
+    }
+
+    func setAutoCaptionMode(_ mode: PlaybackAutoCaptionMode) {
+        guard autoCaptionMode != mode else {
+            evaluateAutomaticCaptions()
+            return
+        }
+        applyCaptionPolicyAction(PlaybackCaptionPolicy.changeMode(state: &captionPolicyState))
+        autoCaptionMode = mode
+        evaluateAutomaticCaptions()
+    }
+
+    func updateAutoCaptionOutputVolume(_ outputVolume: Float?) {
+        lastOutputVolume = outputVolume
+        evaluateAutomaticCaptions()
     }
 
     private func installSubtitleOptions(_ group: AVMediaSelectionGroup, for item: AVPlayerItem) {
@@ -1482,11 +1628,19 @@ final class PlaybackSession: ObservableObject, Identifiable {
         subtitleOptions = entries.map { $0.0 }
         subtitleMediaOptions = Dictionary(uniqueKeysWithValues: entries.map { ($0.0.id, $0.1) })
 
+        if !didInstallInitialCaptionSelection {
+            canDisableSubtitles = group.allowsEmptySelection
+            if canDisableSubtitles { item.select(nil, in: group) }
+            didInstallInitialCaptionSelection = true
+            player.appliesMediaSelectionCriteriaAutomatically = true
+        }
+
         if let selected = item.currentMediaSelection.selectedMediaOption(in: group) {
             selectedSubtitleOptionID = entries.first(where: { $0.1.isEqual(selected) })?.0.id
         } else {
             selectedSubtitleOptionID = nil
         }
+        evaluateAutomaticCaptions()
     }
 
     private func clearSubtitleOptions() {
@@ -1494,6 +1648,50 @@ final class PlaybackSession: ObservableObject, Identifiable {
         subtitleOptions = []
         subtitleMediaOptions = [:]
         selectedSubtitleOptionID = nil
+        canDisableSubtitles = false
+        PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
+    }
+
+    private func completeInitialCaptionSelection() {
+        guard !didInstallInitialCaptionSelection else { return }
+        didInstallInitialCaptionSelection = true
+        player.appliesMediaSelectionCriteriaAutomatically = true
+    }
+
+    private func evaluateAutomaticCaptions() {
+        let action = PlaybackCaptionPolicy.update(
+            mode: autoCaptionMode,
+            outputVolume: lastOutputVolume,
+            state: &captionPolicyState
+        )
+        applyCaptionPolicyAction(action)
+    }
+
+    private func applyCaptionPolicyAction(_ action: PlaybackCaptionPolicyAction) {
+        guard let item = player.currentItem,
+              let subtitleGroup else {
+            if action == .selectAutomatic {
+                PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
+            }
+            return
+        }
+        switch action {
+        case .none:
+            break
+        case .selectAutomatic:
+            guard let entry = subtitleOptions.first(where: \.isClosedCaption)
+                    ?? subtitleOptions.first,
+                  let option = subtitleMediaOptions[entry.id] else {
+                PlaybackCaptionPolicy.automaticSelectionUnavailable(state: &captionPolicyState)
+                return
+            }
+            item.select(option, in: subtitleGroup)
+            selectedSubtitleOptionID = entry.id
+        case .selectOff:
+            guard subtitleGroup.allowsEmptySelection else { return }
+            item.select(nil, in: subtitleGroup)
+            selectedSubtitleOptionID = nil
+        }
     }
 
     private func startPreparationTimeout() {
