@@ -11,64 +11,113 @@ private enum PlaybackCaptionPolicySmoke {
 
     static func main() {
         var state = PlaybackCaptionPolicyState()
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: nil, state: &state) == .none,
-              "Unknown volume became quiet")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: .nan, state: &state) == .none,
-              "Invalid volume became quiet")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.10, state: &state) == .selectAutomatic,
-              "Ten-percent entry threshold did not enable")
-        check(state.quietEpisodeActive && state.automaticCaptionsActive, "Quiet episode state was not retained")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.11, state: &state) == .none,
-              "Hysteresis disabled captions inside the exit band")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.121, state: &state) == .selectOff,
-              "Crossing the exit threshold did not restore Off")
-        check(!state.quietEpisodeActive && !state.automaticCaptionsActive, "Quiet episode did not end")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .disabled, outputVolume: 0, state: &state
+        ) == .none, "Disabled triggers reacted to mute")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: 0, state: &state
+        ) == .selectAutomatic, "Mute trigger did not enable captions")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: 0.001, state: &state
+        ) == .selectOff, "Unmute did not restore Off")
 
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.05, state: &state) == .selectAutomatic,
-              "Second quiet episode did not enable")
-        PlaybackCaptionPolicy.selectManualOff(state: &state)
-        check(state.manualOffSuppressed && !state.automaticCaptionsActive, "Manual Off did not suppress the episode")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.04, state: &state) == .none,
-              "Manual Off was ignored during the same quiet episode")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.20, state: &state) == .none,
-              "Manual Off caused an unnecessary automatic deselection")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.04, state: &state) == .selectAutomatic,
-              "A later quiet episode remained suppressed")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.10, state: &state
+        ) == .selectAutomatic, "Low-volume threshold boundary did not enable")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.101, state: &state
+        ) == .selectOff, "Volume above threshold did not restore Off")
 
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .tenPercent, outputVolume: 0, state: &state
+        ) == .selectAutomatic, "Combined triggers did not enable captions")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.05, state: &state
+        ) == .none, "Unmute disabled captions while low-volume trigger remained active")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.11, state: &state
+        ) == .selectOff, "Captions stayed automatic after both triggers ended")
+
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: 0, state: &state
+        ) == .selectAutomatic, "Manual-track setup did not enable")
         PlaybackCaptionPolicy.selectManualTrack(state: &state)
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.50, state: &state) == .none,
-              "Quiet exit replaced a manual caption track")
-        check(PlaybackCaptionPolicy.update(mode: .tenPercent, outputVolume: 0.01, state: &state) == .none,
-              "Automatic captions replaced a manual caption track")
-        check(state.manualCaptionSelected, "Manual caption intent was lost")
-
-        PlaybackCaptionPolicy.selectManualOff(state: &state)
-        check(PlaybackCaptionPolicy.changeMode(state: &state) == .none, "Mode change disabled a nonautomatic selection")
-        check(PlaybackCaptionPolicy.update(mode: .disabled, outputVolume: 0, state: &state) == .none,
-              "Disabled automation reacted to zero volume")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: 0.5, state: &state
+        ) == .none, "Unmute replaced a manually selected track")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .twentyPercent, outputVolume: 0.1, state: &state
+        ) == .none, "Low-volume automation replaced a manually selected track")
 
         state = PlaybackCaptionPolicyState()
-        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0.001, state: &state) == .none,
-              "Zero-percent mode treated low volume as mute")
-        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0, state: &state) == .selectAutomatic,
-              "Zero-percent mode did not enable at zero")
-        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0.01, state: &state) == .selectOff,
-              "Zero-percent mode remained active above mute")
-        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0, state: &state) == .selectAutomatic,
-              "Zero-percent mode did not start a later muted episode")
-        check(PlaybackCaptionPolicy.changeMode(state: &state) == .selectOff,
-              "Changing mode did not remove automatic captions")
-        check(PlaybackCaptionPolicy.update(mode: .fivePercent, outputVolume: 0.05, state: &state) == .selectAutomatic,
-              "Five-percent threshold boundary failed")
-        check(PlaybackCaptionPolicy.update(mode: .fivePercent, outputVolume: nil, state: &state) == .selectOff,
-              "Unknown signal did not end an automatic quiet episode")
-        check(PlaybackCaptionPolicy.update(mode: .twentyPercent, outputVolume: 0.20, state: &state) == .selectAutomatic,
-              "Twenty-percent threshold boundary failed")
-        check(PlaybackCaptionPolicy.update(mode: .twentyPercent, outputVolume: 0.221, state: &state) == .selectOff,
-              "Twenty-percent hysteresis boundary failed")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .tenPercent, outputVolume: 0, state: &state
+        ) == .selectAutomatic, "Manual-Off setup did not enable")
+        PlaybackCaptionPolicy.selectManualOff(state: &state)
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .tenPercent, outputVolume: 0, state: &state
+        ) == .none, "Manual Off did not hold during mute")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.05, state: &state
+        ) == .none, "Manual Off did not hold while the other trigger remained active")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: false, lowVolumeThreshold: .tenPercent, outputVolume: 0.11, state: &state
+        ) == .none, "Ending a manually suppressed episode selected Off again")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: 0, state: &state
+        ) == .selectAutomatic, "A subsequent mute episode remained suppressed")
+        check(PlaybackCaptionPolicy.update(
+            muteEnabled: true, lowVolumeThreshold: .disabled, outputVolume: nil, state: &state
+        ) == .selectOff, "Unknown volume did not end automatic captions")
 
-        check(Set(PlaybackAutoCaptionMode.allCases.map(\.rawValue)).count == PlaybackAutoCaptionMode.allCases.count,
-              "Persistent mode values are not unique")
+        let defaults = PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil,
+            existingLowVolumeThresholdRawValue: nil,
+            legacyModeRawValue: nil
+        )
+        check(defaults == PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .disabled),
+              "New defaults did not enable mute independently with low volume Off")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil, existingLowVolumeThresholdRawValue: nil, legacyModeRawValue: "disabled"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: false, lowVolumeThreshold: .disabled),
+              "Legacy disabled migration changed meaning")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil, existingLowVolumeThresholdRawValue: nil, legacyModeRawValue: "zeroPercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .disabled),
+              "Legacy zero-percent migration changed meaning")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil, existingLowVolumeThresholdRawValue: nil, legacyModeRawValue: "tenPercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .tenPercent),
+              "Legacy threshold migration changed meaning")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil, existingLowVolumeThresholdRawValue: nil, legacyModeRawValue: "fivePercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .fivePercent),
+              "Legacy five-percent migration changed meaning")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil, existingLowVolumeThresholdRawValue: nil, legacyModeRawValue: "twentyPercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .twentyPercent),
+              "Legacy twenty-percent migration changed meaning")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: false,
+            existingLowVolumeThresholdRawValue: "fivePercent",
+            legacyModeRawValue: "twentyPercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: false, lowVolumeThreshold: .fivePercent),
+              "Existing new preferences were overwritten by migration")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: false,
+            existingLowVolumeThresholdRawValue: nil,
+            legacyModeRawValue: "twentyPercent"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: false, lowVolumeThreshold: .twentyPercent),
+              "Existing mute preference was not preserved during partial migration")
+        check(PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: nil,
+            existingLowVolumeThresholdRawValue: "fivePercent",
+            legacyModeRawValue: "disabled"
+        ) == PlaybackAutoCaptionPreferences(muteEnabled: false, lowVolumeThreshold: .fivePercent),
+              "Existing low-volume preference was not preserved during partial migration")
+        check(Set(PlaybackAutoCaptionLowVolumeThreshold.allCases.map(\.rawValue)).count
+                == PlaybackAutoCaptionLowVolumeThreshold.allCases.count,
+              "Persistent low-volume values are not unique")
 
         let selectionOptions = [
             PlaybackSubtitleOption(id: "es-cc", title: "Español CC", languageCode: "es", isClosedCaption: true),

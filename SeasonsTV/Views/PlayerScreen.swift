@@ -84,10 +84,11 @@ private final class PlayerOutputVolumeMonitor: ObservableObject {
 private struct PlayerCaptionDialogModifier: ViewModifier {
     @ObservedObject var session: PlaybackSession
     @Binding var isPresented: Bool
-    @Binding var autoCaptionModeRawValue: String
+    @Binding var muteEnabled: Bool
+    @Binding var lowVolumeThresholdRawValue: String
 
-    private var autoCaptionMode: PlaybackAutoCaptionMode {
-        PlaybackAutoCaptionMode(rawValue: autoCaptionModeRawValue) ?? .tenPercent
+    private var lowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold {
+        PlaybackAutoCaptionLowVolumeThreshold(rawValue: lowVolumeThresholdRawValue) ?? .disabled
     }
 
     func body(content: Content) -> some View {
@@ -98,19 +99,23 @@ private struct PlayerCaptionDialogModifier: ViewModifier {
         ) {
             PlayerCaptionDialogActions(
                 session: session,
-                autoCaptionMode: autoCaptionMode,
-                selectAutoCaptionMode: { autoCaptionModeRawValue = $0.rawValue }
+                muteEnabled: muteEnabled,
+                lowVolumeThreshold: lowVolumeThreshold,
+                setMuteEnabled: { muteEnabled = $0 },
+                selectLowVolumeThreshold: { lowVolumeThresholdRawValue = $0.rawValue }
             )
         } message: {
-            Text("Choose a track or an automatic device-volume threshold. TV or receiver volume may not be visible to Apple TV.")
+            Text("Choose a track and when automatic captions appear. TV or receiver volume may not be visible to Apple TV.")
         }
     }
 }
 
 private struct PlayerCaptionDialogActions: View {
     @ObservedObject var session: PlaybackSession
-    let autoCaptionMode: PlaybackAutoCaptionMode
-    let selectAutoCaptionMode: (PlaybackAutoCaptionMode) -> Void
+    let muteEnabled: Bool
+    let lowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold
+    let setMuteEnabled: (Bool) -> Void
+    let selectLowVolumeThreshold: (PlaybackAutoCaptionLowVolumeThreshold) -> Void
 
     var body: some View {
         Group {
@@ -129,17 +134,23 @@ private struct PlayerCaptionDialogActions: View {
                     }
                 }
             }
-            ForEach(PlaybackAutoCaptionMode.allCases) { mode in
-                Button(autoCaptionButtonTitle(mode)) {
-                    selectAutoCaptionMode(mode)
+            Button(muteEnabled ? "When muted: On  ✓" : "When muted: On") {
+                setMuteEnabled(true)
+            }
+            Button(muteEnabled ? "When muted: Off" : "When muted: Off  ✓") {
+                setMuteEnabled(false)
+            }
+            ForEach(PlaybackAutoCaptionLowVolumeThreshold.allCases) { threshold in
+                Button(lowVolumeButtonTitle(threshold)) {
+                    selectLowVolumeThreshold(threshold)
                 }
             }
         }
     }
 
-    private func autoCaptionButtonTitle(_ mode: PlaybackAutoCaptionMode) -> String {
-        let title = "Automatic: \(mode.title)"
-        return autoCaptionMode == mode ? "\(title)  ✓" : title
+    private func lowVolumeButtonTitle(_ threshold: PlaybackAutoCaptionLowVolumeThreshold) -> String {
+        let title = "Low volume: \(threshold.title)"
+        return lowVolumeThreshold == threshold ? "\(title)  ✓" : title
     }
 }
 
@@ -174,7 +185,8 @@ private struct PlayerSessionView: View {
     @StateObject private var outputVolumeMonitor = PlayerOutputVolumeMonitor()
     @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("player.autoCaptions.mode") private var autoCaptionModeRawValue = PlaybackAutoCaptionMode.tenPercent.rawValue
+    @AppStorage(PlaybackAutoCaptionPreferenceMigration.muteEnabledKey) private var autoCaptionMuteEnabled = true
+    @AppStorage(PlaybackAutoCaptionPreferenceMigration.lowVolumeThresholdKey) private var autoCaptionLowVolumeThresholdRawValue = PlaybackAutoCaptionLowVolumeThreshold.disabled.rawValue
     @FocusState private var failureActionFocused: Bool
     @FocusState private var playerFocused: Bool
     @FocusState private var focusedTarget: FocusTarget?
@@ -285,7 +297,11 @@ private struct PlayerSessionView: View {
         .focusable(session.playbackError == nil && chrome.layer == .hidden)
         .focused($playerFocused)
         .onAppear {
-            session.setAutoCaptionMode(autoCaptionMode)
+            let preferences = migrateAutoCaptionPreferencesIfNeeded()
+            session.setAutoCaptionPreferences(
+                muteEnabled: preferences.muteEnabled,
+                lowVolumeThreshold: preferences.lowVolumeThreshold
+            )
             outputVolumeMonitor.start()
             session.updateAutoCaptionOutputVolume(outputVolumeMonitor.outputVolume)
             session.player.play()
@@ -300,7 +316,7 @@ private struct PlayerSessionView: View {
             session.updateAutoCaptionOutputVolume(nil)
         }
         .onChange(of: session.id) { _, _ in
-            session.setAutoCaptionMode(autoCaptionMode)
+            updateSessionAutoCaptionPreferences()
             session.updateAutoCaptionOutputVolume(outputVolumeMonitor.outputVolume)
             session.player.play()
             isPaused = false
@@ -368,14 +384,18 @@ private struct PlayerSessionView: View {
         .onChange(of: outputVolumeMonitor.outputVolume) { _, outputVolume in
             session.updateAutoCaptionOutputVolume(outputVolume)
         }
-        .onChange(of: autoCaptionModeRawValue) { _, _ in
-            session.setAutoCaptionMode(autoCaptionMode)
+        .onChange(of: autoCaptionMuteEnabled) { _, _ in
+            updateSessionAutoCaptionPreferences()
+        }
+        .onChange(of: autoCaptionLowVolumeThresholdRawValue) { _, _ in
+            updateSessionAutoCaptionPreferences()
         }
         .modifier(
             PlayerCaptionDialogModifier(
                 session: session,
                 isPresented: $captionsPresented,
-                autoCaptionModeRawValue: $autoCaptionModeRawValue
+                muteEnabled: $autoCaptionMuteEnabled,
+                lowVolumeThresholdRawValue: $autoCaptionLowVolumeThresholdRawValue
             )
         )
     }
@@ -431,8 +451,39 @@ private struct PlayerSessionView: View {
             .ignoresSafeArea()
     }
 
-    private var autoCaptionMode: PlaybackAutoCaptionMode {
-        PlaybackAutoCaptionMode(rawValue: autoCaptionModeRawValue) ?? .tenPercent
+    private var autoCaptionLowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold {
+        PlaybackAutoCaptionLowVolumeThreshold(rawValue: autoCaptionLowVolumeThresholdRawValue) ?? .disabled
+    }
+
+    private func migrateAutoCaptionPreferencesIfNeeded() -> PlaybackAutoCaptionPreferences {
+        let defaults = UserDefaults.standard
+        let persistedValues = Bundle.main.bundleIdentifier.flatMap {
+            defaults.persistentDomain(forName: $0)
+        } ?? [:]
+        let muteObject = persistedValues[PlaybackAutoCaptionPreferenceMigration.muteEnabledKey]
+        let lowVolumeObject = persistedValues[PlaybackAutoCaptionPreferenceMigration.lowVolumeThresholdKey]
+        let preferences = PlaybackAutoCaptionPreferenceMigration.resolve(
+            existingMuteEnabled: muteObject as? Bool,
+            existingLowVolumeThresholdRawValue: lowVolumeObject as? String,
+            legacyModeRawValue: persistedValues[PlaybackAutoCaptionPreferenceMigration.legacyModeKey] as? String
+        )
+        if muteObject == nil {
+            defaults.set(preferences.muteEnabled, forKey: PlaybackAutoCaptionPreferenceMigration.muteEnabledKey)
+        }
+        if lowVolumeObject == nil {
+            defaults.set(
+                preferences.lowVolumeThreshold.rawValue,
+                forKey: PlaybackAutoCaptionPreferenceMigration.lowVolumeThresholdKey
+            )
+        }
+        return preferences
+    }
+
+    private func updateSessionAutoCaptionPreferences() {
+        session.setAutoCaptionPreferences(
+            muteEnabled: autoCaptionMuteEnabled,
+            lowVolumeThreshold: autoCaptionLowVolumeThreshold
+        )
     }
 
     @ViewBuilder
@@ -684,7 +735,10 @@ private struct PlayerSessionView: View {
                 }
                 .onMoveCommand(perform: handleControlMove)
                 .accessibilityLabel("Subtitles and captions")
-                .accessibilityValue(session.selectedSubtitleTitle ?? "Off; automatic \(autoCaptionMode.title)")
+                .accessibilityValue(
+                    session.selectedSubtitleTitle
+                        ?? "Off; when muted \(autoCaptionMuteEnabled ? "On" : "Off"); low volume \(autoCaptionLowVolumeThreshold.title)"
+                )
                 .accessibilityIdentifier("player.control.captions")
 
                 Spacer()

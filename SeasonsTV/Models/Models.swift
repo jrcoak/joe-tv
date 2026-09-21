@@ -1350,9 +1350,16 @@ enum PlaybackCaptionSelection {
     }
 }
 
-enum PlaybackAutoCaptionMode: String, CaseIterable, Identifiable {
+enum PlaybackLegacyAutoCaptionMode: String {
     case disabled
     case zeroPercent
+    case fivePercent
+    case tenPercent
+    case twentyPercent
+}
+
+enum PlaybackAutoCaptionLowVolumeThreshold: String, CaseIterable, Identifiable {
+    case disabled
     case fivePercent
     case tenPercent
     case twentyPercent
@@ -1361,27 +1368,60 @@ enum PlaybackAutoCaptionMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .disabled: return "Off"
-        case .zeroPercent: return "Muted / 0%"
-        case .fivePercent: return "5% or lower"
-        case .tenPercent: return "10% or lower"
-        case .twentyPercent: return "20% or lower"
+        case .fivePercent: return "5%"
+        case .tenPercent: return "10%"
+        case .twentyPercent: return "20%"
         }
     }
-    fileprivate var enterThreshold: Float? {
+    fileprivate var value: Float? {
         switch self {
         case .disabled: return nil
-        case .zeroPercent: return 0
         case .fivePercent: return 0.05
         case .tenPercent: return 0.10
         case .twentyPercent: return 0.20
         }
     }
-    fileprivate var exitThreshold: Float? {
-        switch self {
-        case .disabled: return nil
-        case .zeroPercent: return 0
-        default: return enterThreshold.map { min(1, $0 + 0.02) }
+}
+
+struct PlaybackAutoCaptionPreferences: Equatable {
+    var muteEnabled: Bool
+    var lowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold
+}
+
+enum PlaybackAutoCaptionPreferenceMigration {
+    static let legacyModeKey = "player.autoCaptions.mode"
+    static let muteEnabledKey = "player.autoCaptions.muteEnabled"
+    static let lowVolumeThresholdKey = "player.autoCaptions.lowVolumeThreshold"
+
+    static func resolve(
+        existingMuteEnabled: Bool?,
+        existingLowVolumeThresholdRawValue: String?,
+        legacyModeRawValue: String?
+    ) -> PlaybackAutoCaptionPreferences {
+        let legacyMode = legacyModeRawValue.flatMap(PlaybackLegacyAutoCaptionMode.init(rawValue:))
+        let migrated: PlaybackAutoCaptionPreferences
+        switch legacyMode {
+        case .disabled:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: false, lowVolumeThreshold: .disabled)
+        case .zeroPercent:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .disabled)
+        case .fivePercent:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .fivePercent)
+        case .tenPercent:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .tenPercent)
+        case .twentyPercent:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .twentyPercent)
+        case nil:
+            migrated = PlaybackAutoCaptionPreferences(muteEnabled: true, lowVolumeThreshold: .disabled)
         }
+
+        let lowVolumeThreshold = existingLowVolumeThresholdRawValue.map {
+            PlaybackAutoCaptionLowVolumeThreshold(rawValue: $0) ?? .disabled
+        } ?? migrated.lowVolumeThreshold
+        return PlaybackAutoCaptionPreferences(
+            muteEnabled: existingMuteEnabled ?? migrated.muteEnabled,
+            lowVolumeThreshold: lowVolumeThreshold
+        )
     }
 }
 
@@ -1392,7 +1432,7 @@ enum PlaybackCaptionPolicyAction: Equatable {
 }
 
 struct PlaybackCaptionPolicyState: Equatable {
-    fileprivate(set) var quietEpisodeActive = false
+    fileprivate(set) var triggerEpisodeActive = false
     fileprivate(set) var manualOffSuppressed = false
     fileprivate(set) var automaticCaptionsActive = false
     fileprivate(set) var manualCaptionSelected = false
@@ -1400,25 +1440,26 @@ struct PlaybackCaptionPolicyState: Equatable {
 
 enum PlaybackCaptionPolicy {
     static func update(
-        mode: PlaybackAutoCaptionMode,
+        muteEnabled: Bool,
+        lowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold,
         outputVolume: Float?,
         state: inout PlaybackCaptionPolicyState
     ) -> PlaybackCaptionPolicyAction {
-        guard let enter = mode.enterThreshold,
-              let exit = mode.exitThreshold,
-              let outputVolume,
+        guard let outputVolume,
               outputVolume.isFinite,
               (0...1).contains(outputVolume) else {
-            return endQuietEpisode(state: &state)
+            return endTriggerEpisode(state: &state)
         }
 
-        if state.quietEpisodeActive {
-            guard outputVolume <= exit else { return endQuietEpisode(state: &state) }
-        } else if outputVolume <= enter {
-            state.quietEpisodeActive = true
+        let mutedTriggerActive = muteEnabled && outputVolume == 0
+        let lowVolumeTriggerActive = lowVolumeThreshold.value.map { outputVolume <= $0 } ?? false
+        guard mutedTriggerActive || lowVolumeTriggerActive else {
+            return endTriggerEpisode(state: &state)
+        }
+
+        if !state.triggerEpisodeActive {
+            state.triggerEpisodeActive = true
             state.manualOffSuppressed = false
-        } else {
-            return .none
         }
 
         guard !state.manualCaptionSelected,
@@ -1436,24 +1477,16 @@ enum PlaybackCaptionPolicy {
     static func selectManualOff(state: inout PlaybackCaptionPolicyState) {
         state.manualCaptionSelected = false
         state.automaticCaptionsActive = false
-        if state.quietEpisodeActive { state.manualOffSuppressed = true }
-    }
-
-    static func changeMode(state: inout PlaybackCaptionPolicyState) -> PlaybackCaptionPolicyAction {
-        let action: PlaybackCaptionPolicyAction = state.automaticCaptionsActive ? .selectOff : .none
-        state.quietEpisodeActive = false
-        state.manualOffSuppressed = false
-        state.automaticCaptionsActive = false
-        return action
+        if state.triggerEpisodeActive { state.manualOffSuppressed = true }
     }
 
     static func automaticSelectionUnavailable(state: inout PlaybackCaptionPolicyState) {
         state.automaticCaptionsActive = false
     }
 
-    private static func endQuietEpisode(state: inout PlaybackCaptionPolicyState) -> PlaybackCaptionPolicyAction {
+    private static func endTriggerEpisode(state: inout PlaybackCaptionPolicyState) -> PlaybackCaptionPolicyAction {
         let action: PlaybackCaptionPolicyAction = state.automaticCaptionsActive && !state.manualCaptionSelected ? .selectOff : .none
-        state.quietEpisodeActive = false
+        state.triggerEpisodeActive = false
         state.manualOffSuppressed = false
         state.automaticCaptionsActive = false
         return action
@@ -1471,7 +1504,8 @@ final class PlaybackSession: ObservableObject, Identifiable {
     @Published private(set) var subtitleOptions: [PlaybackSubtitleOption] = []
     @Published private(set) var selectedSubtitleOptionID: String?
     @Published private(set) var canDisableSubtitles = false
-    @Published private(set) var autoCaptionMode: PlaybackAutoCaptionMode = .disabled
+    @Published private(set) var autoCaptionMuteEnabled = true
+    @Published private(set) var autoCaptionLowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold = .disabled
     private let startAtLiveEdge: Bool
     private let resourceLoader: FairPlayResourceLoader?
     private var statusObservation: NSKeyValueObservation?
@@ -1669,13 +1703,17 @@ final class PlaybackSession: ObservableObject, Identifiable {
         }
     }
 
-    func setAutoCaptionMode(_ mode: PlaybackAutoCaptionMode) {
-        guard autoCaptionMode != mode else {
+    func setAutoCaptionPreferences(
+        muteEnabled: Bool,
+        lowVolumeThreshold: PlaybackAutoCaptionLowVolumeThreshold
+    ) {
+        guard autoCaptionMuteEnabled != muteEnabled
+                || autoCaptionLowVolumeThreshold != lowVolumeThreshold else {
             evaluateAutomaticCaptions()
             return
         }
-        applyCaptionPolicyAction(PlaybackCaptionPolicy.changeMode(state: &captionPolicyState))
-        autoCaptionMode = mode
+        autoCaptionMuteEnabled = muteEnabled
+        autoCaptionLowVolumeThreshold = lowVolumeThreshold
         evaluateAutomaticCaptions()
     }
 
@@ -1763,7 +1801,8 @@ final class PlaybackSession: ObservableObject, Identifiable {
 
     private func evaluateAutomaticCaptions() {
         let action = PlaybackCaptionPolicy.update(
-            mode: autoCaptionMode,
+            muteEnabled: autoCaptionMuteEnabled,
+            lowVolumeThreshold: autoCaptionLowVolumeThreshold,
             outputVolume: lastOutputVolume,
             state: &captionPolicyState
         )
