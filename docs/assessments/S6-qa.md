@@ -37,3 +37,7 @@ The FairPlay resource loader, live-edge positioning, playback cleanup calls and 
 - The focused runner does not instantiate AVPlayer, a real media-selection group, an `AVPlayerItemLegibleOutput` or AVAudioSession. It confirms policy, option ranking and semantic identity helpers, not rendered startup suppression or HLS group lifecycle.
 
 No native caption rendering, startup flash, dynamic HLS legible-group change or reordering, nonempty/forced group, focus/Back, output-volume route, external TV/receiver mute, audio selection, FairPlay playback or cleanup was observed. Physical Apple TV acceptance remains required, and `AVAudioSession.outputVolume` must not be presented as evidence of HDMI/IR receiver volume when the route does not report it.
+
+## Follow-up review
+
+The bounded follow-up deltas `f31805f` and `6fdbe8d` are accepted against the requested requirements. Captions-on-mute defaults on independently; low-volume automation defaults Off and offers 5%, 10% and 20%; automation ends when neither trigger remains; manual tracks persist; and manual Off suppresses re-enabling within the active trigger episode. New preference keys are additive and preserve existing values while mapping the legacy mode key. Guide sizing is now Standard by default with the prior compact geometry retained under the preserved raw mapping, and its controls live in the renamed Settings sheet rather than the guide. No concrete source bug was found in these deltas. PM owns the final build and native fixture verification.
