@@ -1,0 +1,24 @@
+# S6 App handoff — guide sizing
+
+- Assignment: S6 App guide sizing under `docs/assignments/S6-guide-captions.md`.
+- Governing baseline/spec: base Joe-TV `46256bc`, TEAM-8 repository instructions.
+- Branch: `codex/joe-tv-app-s6`.
+- Scope: `JoeTVGuideView`, `JoeTVGuideGrid`, adjacent guide sizing/preference types, and the focused sizing fixture only.
+
+## Result
+
+Live TV now exposes persistent Standard and Large guide-size buttons in the existing filter bar. Standard preserves the released 250-point channel column, 66-point rows, 38-point ruler, 555-point viewport, timeline scale, logo sizes, single-line labels, and all existing type sizes.
+
+Large keeps the same three-hour timeline scale and visual styling while using a 300-point channel column, 90-point rows, a 44-point ruler, larger channel/program/ruler/time text, and two-line channel and program titles. The viewport presents about 5.7 rows, so five rows are complete and the sixth remains visible, matching Joe's photo reference without adopting its skin or sidebar.
+
+The controls update metrics in the existing grid position, preserving the current focus binding, filter behavior, scroll reader, preview, program selection, and playback routes. The normal preference key is `com.jrcoak.joetv.guideSize`. Debug navigation runs with `JOE_TV_DEBUG_NAVIGATION=1` use the isolated `com.jrcoak.joetv.fixture.guide` defaults suite so native QA does not change the normal app preference.
+
+Joe's supplied guide photo is the direct comparison for this change; separate competitor parity does not apply because the requested outcome is a user-selected density variant of the accepted Joe-TV guide.
+
+## Verification
+
+- `scripts/test-guide-sizing.sh`: passed 7 checks covering exact Standard geometry/type preservation, Large row density, larger text, two-line labels, and unchanged timeline scale.
+- `xcrun swiftc -frontend -parse SeasonsTV/Views/JoeTVExperience.swift`: passed.
+- `git diff --check`: passed.
+
+No simulator, provider, device, player, model, project, signing, build-number, release, or Plex-fork work was performed. PM owns the combined build and native fixture verification. Native acceptance remains required for visible row density, focus continuity after changing size, two-line truncation, ruler/row/now-line alignment, and preference restoration.

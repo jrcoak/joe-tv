@@ -317,8 +317,22 @@ struct JoeTVHomeView: View {
 
 // MARK: - Live guide
 
+private enum JoeTVGuidePreferenceStore {
+    static let defaults: UserDefaults = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_NAVIGATION"] == "1",
+           let fixture = UserDefaults(suiteName: "com.jrcoak.joetv.fixture.guide") {
+            return fixture
+        }
+        #endif
+        return .standard
+    }()
+}
+
 struct JoeTVGuideView: View {
     @EnvironmentObject private var model: AppModel
+    @AppStorage("com.jrcoak.joetv.guideSize", store: JoeTVGuidePreferenceStore.defaults)
+    private var guideSizePreference = JoeTVGuideSize.standard.rawValue
     @State private var filter: GuideFilter = .all
     @State private var selectedChannelID: String?
     @State private var selectedProgramID: String?
@@ -351,6 +365,9 @@ struct JoeTVGuideView: View {
     }
 
     private var guideWindow: EPGGuideWindow? { model.epgState.usableWindow }
+    private var guideSize: JoeTVGuideSize {
+        JoeTVGuideSize(rawValue: guideSizePreference) ?? .standard
+    }
 
     private var channels: [LiveChannel] {
         model.liveChannels.filter { channel in
@@ -408,6 +425,27 @@ struct JoeTVGuideView: View {
                     }
 
                     Spacer()
+                    Text("SIZE")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(1.1)
+                        .foregroundStyle(SeasonTheme.secondaryText)
+                    ForEach(JoeTVGuideSize.allCases) { size in
+                        Button(size.title) {
+                            guideSizePreference = size.rawValue
+                        }
+                        .buttonStyle(JoeTVGuideFilterButtonStyle(isSelected: guideSize == size))
+                        .focused($focusedID, equals: guideSizeFocusID(size))
+                        .accessibilityLabel("\(size.title) guide size")
+                        .accessibilityIdentifier("guide.size.\(size.rawValue)")
+                        .onKeyPress(.upArrow) {
+                            onFocusNavigation()
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            focusGuideSelection()
+                            return .handled
+                        }
+                    }
                     epgStatus
                 }
 
@@ -429,6 +467,7 @@ struct JoeTVGuideView: View {
                         guideWindow: guideWindow,
                         mappings: model.channelStationMappings,
                         anchor: model.guideTimeAnchor,
+                        metrics: JoeTVGuideMetrics(size: guideSize),
                         focusedID: $focusedID,
                         focusFilters: focusCurrentFilter,
                         selectionChanged: updateSelection,
@@ -634,6 +673,10 @@ struct JoeTVGuideView: View {
         "guide-filter:\(filter.id)"
     }
 
+    private func guideSizeFocusID(_ size: JoeTVGuideSize) -> String {
+        "guide-size:\(size.rawValue)"
+    }
+
     private func focusCurrentFilter() {
         focusedID = filterFocusID(filter)
     }
@@ -719,28 +762,94 @@ private func joeTVGuideWindowStart(anchor: Date, window: EPGGuideWindow?) -> Dat
     return calendar.date(byAdding: .minute, value: -(minute % 30), to: reference) ?? reference
 }
 
+// BEGIN GUIDE SIZING POLICY
+enum JoeTVGuideSize: String, CaseIterable, Identifiable {
+    case standard
+    case large
+
+    var id: String { rawValue }
+    var title: String { self == .standard ? "Standard" : "Large" }
+}
+
+struct JoeTVGuideMetrics: Equatable {
+    let channelWidth: CGFloat
+    let rowHeight: CGFloat
+    let rulerHeight: CGFloat
+    let pointsPerMinute: CGFloat
+    let gridHeight: CGFloat
+    let channelLogoWidth: CGFloat
+    let channelLogoHeight: CGFloat
+    let channelFontSize: CGFloat
+    let channelLineLimit: Int
+    let channelHeaderFontSize: CGFloat
+    let rulerFontSize: CGFloat
+    let programFontSize: CGFloat
+    let programLineLimit: Int
+    let programTimeFontSize: CGFloat
+    let unavailableFontSize: CGFloat
+    let minimumProgramWidth: CGFloat
+
+    init(size: JoeTVGuideSize) {
+        switch size {
+        case .standard:
+            channelWidth = 250
+            rowHeight = 66
+            rulerHeight = 38
+            pointsPerMinute = 8
+            gridHeight = 555
+            channelLogoWidth = 72
+            channelLogoHeight = 45
+            channelFontSize = 16
+            channelLineLimit = 1
+            channelHeaderFontSize = 12
+            rulerFontSize = 12
+            programFontSize = 14
+            programLineLimit = 1
+            programTimeFontSize = 10
+            unavailableFontSize = 14
+            minimumProgramWidth = 94
+        case .large:
+            channelWidth = 300
+            rowHeight = 90
+            rulerHeight = 44
+            pointsPerMinute = 8
+            gridHeight = 555
+            channelLogoWidth = 86
+            channelLogoHeight = 54
+            channelFontSize = 20
+            channelLineLimit = 2
+            channelHeaderFontSize = 14
+            rulerFontSize = 15
+            programFontSize = 18
+            programLineLimit = 2
+            programTimeFontSize = 13
+            unavailableFontSize = 17
+            minimumProgramWidth = 112
+        }
+    }
+}
+// END GUIDE SIZING POLICY
+
 private struct JoeTVGuideGrid: View {
     let channels: [LiveChannel]
     let guideWindow: EPGGuideWindow?
     let mappings: [String: String]
     let anchor: Date
+    let metrics: JoeTVGuideMetrics
     @FocusState.Binding var focusedID: String?
     let focusFilters: () -> Void
     let selectionChanged: (LiveChannel, EPGProgram?) -> Void
     let programPressed: (LiveChannel, EPGProgram) -> Void
     let channelPressed: (LiveChannel) -> Void
 
-    private let channelWidth: CGFloat = 250
-    private let rowHeight: CGFloat = 66
-    private let rulerHeight: CGFloat = 38
-    private let pointsPerMinute: CGFloat = 8
-
     private var windowStart: Date {
         joeTVGuideWindowStart(anchor: anchor, window: guideWindow)
     }
 
     private var windowEnd: Date { windowStart.addingTimeInterval(3 * 3_600) }
-    private var timelineWidth: CGFloat { CGFloat(windowEnd.timeIntervalSince(windowStart) / 60) * pointsPerMinute }
+    private var timelineWidth: CGFloat {
+        CGFloat(windowEnd.timeIntervalSince(windowStart) / 60) * metrics.pointsPerMinute
+    }
 
     var body: some View {
         ScrollViewReader { verticalProxy in
@@ -748,10 +857,10 @@ private struct JoeTVGuideGrid: View {
                 HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: 0) {
                     Text("CHANNELS")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.system(size: metrics.channelHeaderFontSize, weight: .bold, design: .monospaced))
                         .tracking(1.2)
                         .foregroundStyle(SeasonTheme.secondaryText)
-                        .frame(width: channelWidth, height: rulerHeight, alignment: .leading)
+                        .frame(width: metrics.channelWidth, height: metrics.rulerHeight, alignment: .leading)
 
                     ForEach(Array(channels.enumerated()), id: \.element.id) { index, channel in
                         Button { channelPressed(channel) } label: {
@@ -763,15 +872,15 @@ private struct JoeTVGuideGrid: View {
                                     outerPadding: 2,
                                     artworkPadding: 5
                                 )
-                                .frame(width: 72, height: 45)
+                                .frame(width: metrics.channelLogoWidth, height: metrics.channelLogoHeight)
                                 Text(channel.name)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: metrics.channelFontSize, weight: .semibold))
                                     .foregroundStyle(SeasonTheme.paper)
-                                    .lineLimit(1)
+                                    .lineLimit(metrics.channelLineLimit)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 9)
-                            .frame(width: channelWidth, height: rowHeight, alignment: .leading)
+                            .frame(width: metrics.channelWidth, height: metrics.rowHeight, alignment: .leading)
                             .background(SeasonTheme.surface)
                             .overlay(alignment: .bottom) { Rectangle().fill(SeasonTheme.keyline).frame(height: 1) }
                         }
@@ -809,7 +918,7 @@ private struct JoeTVGuideGrid: View {
             .onKeyPress(.downArrow, phases: .repeat) { _ in
                 speedScroll(by: 6, proxy: verticalProxy)
             }
-            .frame(maxHeight: 555)
+            .frame(maxHeight: metrics.gridHeight)
             .overlay { Rectangle().stroke(SeasonTheme.keyline, lineWidth: 1) }
             .clipped()
         }
@@ -821,12 +930,12 @@ private struct JoeTVGuideGrid: View {
             ForEach(0..<7, id: \.self) { tick in
                 let date = windowStart.addingTimeInterval(Double(tick) * 30 * 60)
                 Text(date, format: .dateTime.hour().minute())
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(size: metrics.rulerFontSize, weight: .medium, design: .monospaced))
                     .foregroundStyle(SeasonTheme.secondaryText)
-                    .offset(x: CGFloat(tick) * 30 * pointsPerMinute + 8)
+                    .offset(x: CGFloat(tick) * 30 * metrics.pointsPerMinute + 8)
             }
         }
-        .frame(width: timelineWidth, height: rulerHeight)
+        .frame(width: timelineWidth, height: metrics.rulerHeight)
     }
 
     private func programRow(_ channel: LiveChannel, isFirstRow: Bool) -> some View {
@@ -835,26 +944,28 @@ private struct JoeTVGuideGrid: View {
             SeasonTheme.surface.opacity(0.72)
             if visiblePrograms.isEmpty {
                 Text("Schedule unavailable")
-                    .font(.system(size: 14))
+                    .font(.system(size: metrics.unavailableFontSize))
                     .foregroundStyle(SeasonTheme.secondaryText)
                     .padding(.leading, 18)
             } else {
                 ForEach(visiblePrograms) { program in
                     let start = max(program.start, windowStart)
                     let end = min(program.end, windowEnd)
-                    let x = CGFloat(start.timeIntervalSince(windowStart) / 60) * pointsPerMinute
-                    let width = max(94, CGFloat(end.timeIntervalSince(start) / 60) * pointsPerMinute - 4)
+                    let x = CGFloat(start.timeIntervalSince(windowStart) / 60) * metrics.pointsPerMinute
+                    let width = max(metrics.minimumProgramWidth,
+                        CGFloat(end.timeIntervalSince(start) / 60) * metrics.pointsPerMinute - 4)
                     Button { programPressed(channel, program) } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(program.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .lineLimit(1)
+                                .font(.system(size: metrics.programFontSize, weight: .semibold))
+                                .lineLimit(metrics.programLineLimit)
                             Text(program.start, format: .dateTime.hour().minute())
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .font(.system(size: metrics.programTimeFontSize,
+                                    weight: .medium, design: .monospaced))
                                 .foregroundStyle(SeasonTheme.secondaryText)
                         }
                         .padding(.horizontal, 11)
-                        .frame(width: width, height: rowHeight - 4, alignment: .leading)
+                        .frame(width: width, height: metrics.rowHeight - 4, alignment: .leading)
                         .background(program.contains(Date()) ? SeasonTheme.liveSignal.opacity(0.13) : SeasonTheme.raisedSurface)
                         .overlay { Rectangle().stroke(SeasonTheme.keyline, lineWidth: 1) }
                     }
@@ -872,14 +983,14 @@ private struct JoeTVGuideGrid: View {
                 }
             }
         }
-        .frame(width: timelineWidth, height: rowHeight, alignment: .leading)
+        .frame(width: timelineWidth, height: metrics.rowHeight, alignment: .leading)
         .overlay(alignment: .bottom) { Rectangle().fill(SeasonTheme.keyline).frame(height: 1) }
     }
 
     @ViewBuilder private var nowLine: some View {
         let now = Date()
         if now >= windowStart && now <= windowEnd {
-            let x = CGFloat(now.timeIntervalSince(windowStart) / 60) * pointsPerMinute
+            let x = CGFloat(now.timeIntervalSince(windowStart) / 60) * metrics.pointsPerMinute
             VStack(spacing: 0) {
                 Text("NOW")
                     .font(.system(size: 9, weight: .bold))
@@ -889,7 +1000,7 @@ private struct JoeTVGuideGrid: View {
                     .background(SeasonTheme.liveSignal)
                 Rectangle().fill(SeasonTheme.liveSignal).frame(width: 2)
             }
-            .frame(height: rulerHeight + CGFloat(channels.count) * rowHeight, alignment: .top)
+            .frame(height: metrics.rulerHeight + CGFloat(channels.count) * metrics.rowHeight, alignment: .top)
             .offset(x: x - 1)
             .allowsHitTesting(false)
         }
