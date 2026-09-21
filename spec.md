@@ -23,7 +23,7 @@ For M0, prioritize an evidence-backed friction map and before/after interaction 
 - Native Swift/SwiftUI tvOS app, UIKit where used, AVFoundation playback, custom player controls, HLS, and FairPlay. Deployment target is currently tvOS 17.0; the local Xcode inspection found 26.6 (17F113). Verify actual build compatibility rather than relying on old README claims.
 - Seasons4U authenticated catalogs and runtime stream resolution; Very Local and NHPBS integrations; XMLTV guide and sports enrichment through Personal Media API.
 - Home driven by enabled favorite channels, with the hero following the focused favorite. Channel visibility and favorites are distinct persistent choices.
-- Live TV guide with channel categories, program information, predictable focus, and explicit selection to tune.
+- Live TV guide with channel categories, program information, predictable focus, and explicit selection to tune. Standard uses the larger, roughly six-row layout; the original dense layout is available as Compact in Settings. Guide sizing controls stay off the Live TV filter bar.
 - Consolidated Sports from provider catalogs and ESPN+ with Live/Upcoming views, a full-width event board, selected-event details above, a compact preview at upper right, and persistent multi-select filtering.
 - Twenty-six sports categories with separate professional/college/women's categories, Pickleball, and Wrestling/WWE. Preserve migration of old filters; unmatched/Volleyball events fall under Other.
 - Baseball-family Home/Away/National feed choices; live streams start near live edge; scheduled coverage becomes available 15 minutes before game time when a playable source exists. Match events by date and stable identity.
