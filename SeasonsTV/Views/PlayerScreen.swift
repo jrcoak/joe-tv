@@ -42,6 +42,18 @@ private final class PlayerOutputVolumeMonitor: ObservableObject {
 
     func start() {
         guard observation == nil else { return }
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["JOE_TV_DEBUG_CAPTIONS_URL"] != nil,
+           let rawVolume = environment["JOE_TV_DEBUG_CAPTIONS_VOLUME"],
+           let fixtureVolume = Float(rawVolume),
+           fixtureVolume.isFinite,
+           (0...1).contains(fixtureVolume) {
+            observationGeneration &+= 1
+            outputVolume = fixtureVolume
+            return
+        }
+        #endif
         observationGeneration &+= 1
         let generation = observationGeneration
         let audioSession = AVAudioSession.sharedInstance()

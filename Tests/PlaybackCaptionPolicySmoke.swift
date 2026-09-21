@@ -52,6 +52,10 @@ private enum PlaybackCaptionPolicySmoke {
               "Zero-percent mode treated low volume as mute")
         check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0, state: &state) == .selectAutomatic,
               "Zero-percent mode did not enable at zero")
+        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0.01, state: &state) == .selectOff,
+              "Zero-percent mode remained active above mute")
+        check(PlaybackCaptionPolicy.update(mode: .zeroPercent, outputVolume: 0, state: &state) == .selectAutomatic,
+              "Zero-percent mode did not start a later muted episode")
         check(PlaybackCaptionPolicy.changeMode(state: &state) == .selectOff,
               "Changing mode did not remove automatic captions")
         check(PlaybackCaptionPolicy.update(mode: .fivePercent, outputVolume: 0.05, state: &state) == .selectAutomatic,
@@ -82,6 +86,18 @@ private enum PlaybackCaptionPolicySmoke {
               "Deterministic accessibility fallback changed")
         check(PlaybackCaptionSelection.preferredOptionID(from: [], preferredLanguages: ["en"]) == nil,
               "Empty options produced an automatic selection")
+
+        let stableIdentity = PlaybackSubtitleIdentity.baseIdentifier(
+            languageCode: "en_US",
+            displayName: "English CC",
+            isClosedCaption: true
+        )
+        check(stableIdentity == PlaybackSubtitleIdentity.baseIdentifier(
+            languageCode: "en-US",
+            displayName: "English CC",
+            isClosedCaption: true
+        ), "Equivalent language tags produced different subtitle identities")
+        check(!stableIdentity.contains("|0"), "Subtitle identity retained a source-order index")
         print("Playback caption policy smoke passed (\(checks) checks)")
     }
 }
