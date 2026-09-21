@@ -9,40 +9,40 @@ import Foundation
     }
 
     static func main() {
+        let compact = JoeTVGuideMetrics(size: .compact)
         let standard = JoeTVGuideMetrics(size: .standard)
-        let large = JoeTVGuideMetrics(size: .large)
 
-        check(standard.channelWidth == 250 && standard.rowHeight == 66
-            && standard.rulerHeight == 38 && standard.pointsPerMinute == 8
-            && standard.gridHeight == 555, "Standard geometry changed from the accepted guide")
-        check(standard.channelLogoWidth == 72 && standard.channelLogoHeight == 45
-            && standard.channelFontSize == 16 && standard.channelLineLimit == 1,
-            "Standard channel presentation changed")
-        check(standard.channelHeaderFontSize == 12 && standard.rulerFontSize == 12
-            && standard.programFontSize == 14 && standard.programLineLimit == 1
-            && standard.programTimeFontSize == 10 && standard.unavailableFontSize == 14
-            && standard.minimumProgramWidth == 94, "Standard guide typography changed")
+        check(compact.channelWidth == 250 && compact.rowHeight == 66
+            && compact.rulerHeight == 38 && compact.pointsPerMinute == 8
+            && compact.gridHeight == 555, "Compact geometry changed from the released guide")
+        check(compact.channelLogoWidth == 72 && compact.channelLogoHeight == 45
+            && compact.channelFontSize == 16 && compact.channelLineLimit == 1,
+            "Compact channel presentation changed")
+        check(compact.channelHeaderFontSize == 12 && compact.rulerFontSize == 12
+            && compact.programFontSize == 14 && compact.programLineLimit == 1
+            && compact.programTimeFontSize == 10 && compact.unavailableFontSize == 14
+            && compact.minimumProgramWidth == 94, "Compact guide typography changed")
 
-        let visibleLargeRows = (large.gridHeight - large.rulerHeight) / large.rowHeight
-        check(visibleLargeRows >= 5.5 && visibleLargeRows < 6,
-            "Large guide no longer presents roughly six readable rows")
-        check(large.channelWidth == 330 && large.rowHeight == 94
-            && large.rulerHeight == 44 && large.gridHeight == 600,
-            "Large guide geometry changed from native acceptance")
-        check(large.channelFontSize == 24 && large.channelHeaderFontSize == 16
-            && large.rulerFontSize == 20 && large.programFontSize == 24
-            && large.programTimeFontSize == 18 && large.unavailableFontSize == 22,
-            "Large guide typography changed from native acceptance")
-        check(large.channelFontSize > standard.channelFontSize
-            && large.programFontSize > standard.programFontSize
-            && large.programTimeFontSize > standard.programTimeFontSize
-            && large.rulerFontSize > standard.rulerFontSize,
-            "Large guide typography is not larger than Standard")
-        check(large.channelLineLimit == 2 && large.programLineLimit == 2,
-            "Large guide does not preserve two-line channel and program titles")
-        check(large.pointsPerMinute == standard.pointsPerMinute,
+        let visibleStandardRows = (standard.gridHeight - standard.rulerHeight) / standard.rowHeight
+        check(visibleStandardRows >= 5.5 && visibleStandardRows < 6,
+            "Standard guide no longer presents roughly six readable rows")
+        check(standard.channelWidth == 330 && standard.rowHeight == 94
+            && standard.rulerHeight == 44 && standard.gridHeight == 600,
+            "Standard guide geometry changed from native acceptance")
+        check(standard.channelFontSize == 24 && standard.channelHeaderFontSize == 16
+            && standard.rulerFontSize == 20 && standard.programFontSize == 24
+            && standard.programTimeFontSize == 18 && standard.unavailableFontSize == 22,
+            "Standard guide typography changed from native acceptance")
+        check(standard.channelFontSize > compact.channelFontSize
+            && standard.programFontSize > compact.programFontSize
+            && standard.programTimeFontSize > compact.programTimeFontSize
+            && standard.rulerFontSize > compact.rulerFontSize,
+            "Standard guide typography is not larger than Compact")
+        check(standard.channelLineLimit == 2 && standard.programLineLimit == 2,
+            "Standard guide does not preserve two-line channel and program titles")
+        check(standard.pointsPerMinute == compact.pointsPerMinute,
             "Guide size changed the shared timeline scale")
 
-        print("Joe-TV guide sizing passed (\(checks) checks; Standard preservation and Large readability)")
+        print("Joe-TV guide sizing passed (\(checks) checks; Compact preservation and Standard readability)")
     }
 }

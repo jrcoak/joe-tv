@@ -278,7 +278,7 @@ private struct CatalogView: View {
                     .disabled(model.isNavigationFixture)
                 }
                 Button { showsChannelSettings = true } label: {
-                    Label("Channels", systemImage: "tv.and.mediabox")
+                    Label("Settings", systemImage: "gearshape")
                 }
                 Button(role: model.isVeryLocalOnly ? nil : .destructive) {
                     if model.isVeryLocalOnly {
@@ -419,6 +419,8 @@ private struct CatalogView: View {
 private struct ChannelSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("com.jrcoak.joetv.guideSize", store: JoeTVGuidePreferenceStore.defaults)
+    private var guideSizePreference = JoeTVGuideSize.standard.rawValue
 
     private struct ProviderSection: Identifiable {
         let id: String
@@ -446,9 +448,9 @@ private struct ChannelSettingsView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Channels")
+                    Text("Settings")
                         .font(.system(size: 40, weight: .semibold))
-                    Text("Choose channels for Live TV and favorites for Home.")
+                    Text("Guide size, playback behavior, and channels for Live TV and Home.")
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -502,6 +504,46 @@ private struct ChannelSettingsView: View {
                         model.directionalChannelSurfingEnabled ? "Enabled" : "Disabled"
                     )
                     .accessibilityIdentifier("settings.playback.directionalChannelSurfing")
+
+                    Text("GUIDE SIZE")
+                        .font(.system(size: 15, weight: .semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+
+                    ForEach(JoeTVGuideSize.allCases) { size in
+                        Button {
+                            guideSizePreference = size.rawValue
+                        } label: {
+                            HStack(spacing: 18) {
+                                Image(systemName: size == .standard ? "textformat.size.larger" : "textformat.size.smaller")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .frame(width: 34)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(size.title)
+                                        .font(.system(size: 22, weight: .semibold))
+                                    Text(size == .standard
+                                        ? "Larger type with about six readable guide rows."
+                                        : "Compact type with the original guide density.")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                                Spacer()
+                                if (JoeTVGuideSize(rawValue: guideSizePreference) ?? .standard) == size {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 20, weight: .medium))
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(ChannelSettingsButtonStyle(minimumHeight: 88))
+                        .accessibilityValue(
+                            (JoeTVGuideSize(rawValue: guideSizePreference) ?? .standard) == size
+                                ? "Selected" : "Not selected"
+                        )
+                        .accessibilityIdentifier("settings.guide.size.\(size.rawValue)")
+                    }
 
                     ForEach(sections) { section in
                         Text(section.title.uppercased())

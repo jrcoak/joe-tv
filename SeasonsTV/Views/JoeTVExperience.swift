@@ -317,7 +317,7 @@ struct JoeTVHomeView: View {
 
 // MARK: - Live guide
 
-private enum JoeTVGuidePreferenceStore {
+enum JoeTVGuidePreferenceStore {
     static let defaults: UserDefaults = {
         #if DEBUG
         if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_NAVIGATION"] == "1",
@@ -425,27 +425,6 @@ struct JoeTVGuideView: View {
                     }
 
                     Spacer()
-                    Text("SIZE")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.1)
-                        .foregroundStyle(SeasonTheme.secondaryText)
-                    ForEach(JoeTVGuideSize.allCases) { size in
-                        Button(size.title) {
-                            guideSizePreference = size.rawValue
-                        }
-                        .buttonStyle(JoeTVGuideFilterButtonStyle(isSelected: guideSize == size))
-                        .focused($focusedID, equals: guideSizeFocusID(size))
-                        .accessibilityLabel("\(size.title) guide size")
-                        .accessibilityIdentifier("guide.size.\(size.rawValue)")
-                        .onKeyPress(.upArrow) {
-                            onFocusNavigation()
-                            return .handled
-                        }
-                        .onKeyPress(.downArrow) {
-                            focusGuideSelection()
-                            return .handled
-                        }
-                    }
                     epgStatus
                 }
 
@@ -673,10 +652,6 @@ struct JoeTVGuideView: View {
         "guide-filter:\(filter.id)"
     }
 
-    private func guideSizeFocusID(_ size: JoeTVGuideSize) -> String {
-        "guide-size:\(size.rawValue)"
-    }
-
     private func focusCurrentFilter() {
         focusedID = filterFocusID(filter)
     }
@@ -764,11 +739,13 @@ private func joeTVGuideWindowStart(anchor: Date, window: EPGGuideWindow?) -> Dat
 
 // BEGIN GUIDE SIZING POLICY
 enum JoeTVGuideSize: String, CaseIterable, Identifiable {
-    case standard
-    case large
+    // Raw values retain the pre-S6 preference mapping: saved `large` was the
+    // accepted large layout, while saved `standard` was the compact layout.
+    case standard = "large"
+    case compact = "standard"
 
     var id: String { rawValue }
-    var title: String { self == .standard ? "Standard" : "Large" }
+    var title: String { self == .standard ? "Standard" : "Compact" }
 }
 
 struct JoeTVGuideMetrics: Equatable {
@@ -791,7 +768,7 @@ struct JoeTVGuideMetrics: Equatable {
 
     init(size: JoeTVGuideSize) {
         switch size {
-        case .standard:
+        case .compact:
             channelWidth = 250
             rowHeight = 66
             rulerHeight = 38
@@ -808,7 +785,7 @@ struct JoeTVGuideMetrics: Equatable {
             programTimeFontSize = 10
             unavailableFontSize = 14
             minimumProgramWidth = 94
-        case .large:
+        case .standard:
             channelWidth = 330
             rowHeight = 94
             rulerHeight = 44
