@@ -38,26 +38,96 @@ private final class PlayerChromeModel: ObservableObject {
 private final class PlayerOutputVolumeMonitor: ObservableObject {
     @Published private(set) var outputVolume: Float?
     private var observation: NSKeyValueObservation?
+    private var observationGeneration = 0
 
     func start() {
         guard observation == nil else { return }
+        observationGeneration &+= 1
+        let generation = observationGeneration
         let audioSession = AVAudioSession.sharedInstance()
         observation = audioSession.observe(\.outputVolume, options: [.initial, .new]) { [weak self] _, change in
             let value = change.newValue
             Task { @MainActor [weak self] in
+                guard let self,
+                      self.observationGeneration == generation,
+                      self.observation != nil else { return }
                 guard let value, value.isFinite, (0...1).contains(value) else {
-                    self?.outputVolume = nil
+                    self.outputVolume = nil
                     return
                 }
-                self?.outputVolume = value
+                self.outputVolume = value
             }
         }
     }
 
     func stop() {
-        observation?.invalidate()
+        observationGeneration &+= 1
+        let activeObservation = observation
         observation = nil
+        activeObservation?.invalidate()
         outputVolume = nil
+    }
+}
+
+private struct PlayerCaptionDialogModifier: ViewModifier {
+    @ObservedObject var session: PlaybackSession
+    @Binding var isPresented: Bool
+    @Binding var autoCaptionModeRawValue: String
+
+    private var autoCaptionMode: PlaybackAutoCaptionMode {
+        PlaybackAutoCaptionMode(rawValue: autoCaptionModeRawValue) ?? .tenPercent
+    }
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            "Subtitles & Captions",
+            isPresented: $isPresented,
+            titleVisibility: .visible
+        ) {
+            PlayerCaptionDialogActions(
+                session: session,
+                autoCaptionMode: autoCaptionMode,
+                selectAutoCaptionMode: { autoCaptionModeRawValue = $0.rawValue }
+            )
+        } message: {
+            Text("Choose a track or an automatic device-volume threshold. TV or receiver volume may not be visible to Apple TV.")
+        }
+    }
+}
+
+private struct PlayerCaptionDialogActions: View {
+    @ObservedObject var session: PlaybackSession
+    let autoCaptionMode: PlaybackAutoCaptionMode
+    let selectAutoCaptionMode: (PlaybackAutoCaptionMode) -> Void
+
+    var body: some View {
+        Group {
+            if session.subtitleOptions.isEmpty {
+                Button("No captions available") {}
+                    .disabled(true)
+            } else {
+                if session.canDisableSubtitles {
+                    Button(session.selectedSubtitleOptionID == nil ? "Off  ✓" : "Off") {
+                        session.selectSubtitle(nil)
+                    }
+                }
+                ForEach(session.subtitleOptions) { option in
+                    Button(session.selectedSubtitleOptionID == option.id ? "\(option.title)  ✓" : option.title) {
+                        session.selectSubtitle(option.id)
+                    }
+                }
+            }
+            ForEach(PlaybackAutoCaptionMode.allCases) { mode in
+                Button(autoCaptionButtonTitle(mode)) {
+                    selectAutoCaptionMode(mode)
+                }
+            }
+        }
+    }
+
+    private func autoCaptionButtonTitle(_ mode: PlaybackAutoCaptionMode) -> String {
+        let title = "Automatic: \(mode.title)"
+        return autoCaptionMode == mode ? "\(title)  ✓" : title
     }
 }
 
@@ -129,6 +199,10 @@ private struct PlayerSessionView: View {
     }
 
     var body: some View {
+        playerInputView
+    }
+
+    private var playerLifecycleView: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             playbackSurface
@@ -285,34 +359,17 @@ private struct PlayerSessionView: View {
         .onChange(of: autoCaptionModeRawValue) { _, _ in
             session.setAutoCaptionMode(autoCaptionMode)
         }
-        .confirmationDialog(
-            "Subtitles & Captions",
-            isPresented: $captionsPresented,
-            titleVisibility: .visible
-        ) {
-            if session.subtitleOptions.isEmpty {
-                Button("No captions available") {}
-                    .disabled(true)
-            } else {
-                if session.canDisableSubtitles {
-                    Button(session.selectedSubtitleOptionID == nil ? "Off  ✓" : "Off") {
-                        session.selectSubtitle(nil)
-                    }
-                }
-                ForEach(session.subtitleOptions) { option in
-                    Button(session.selectedSubtitleOptionID == option.id ? "\(option.title)  ✓" : option.title) {
-                        session.selectSubtitle(option.id)
-                    }
-                }
-            }
-            ForEach(PlaybackAutoCaptionMode.allCases) { mode in
-                Button(autoCaptionButtonTitle(mode)) {
-                    autoCaptionModeRawValue = mode.rawValue
-                }
-            }
-        } message: {
-            Text("Choose a track or an automatic device-volume threshold. TV or receiver volume may not be visible to Apple TV.")
-        }
+        .modifier(
+            PlayerCaptionDialogModifier(
+                session: session,
+                isPresented: $captionsPresented,
+                autoCaptionModeRawValue: $autoCaptionModeRawValue
+            )
+        )
+    }
+
+    private var playerInputView: some View {
+        playerLifecycleView
         .onExitCommand(perform: handlePlayerBack)
         .onPlayPauseCommand(perform: togglePlayback)
         .task(id: session.id) {
@@ -364,11 +421,6 @@ private struct PlayerSessionView: View {
 
     private var autoCaptionMode: PlaybackAutoCaptionMode {
         PlaybackAutoCaptionMode(rawValue: autoCaptionModeRawValue) ?? .tenPercent
-    }
-
-    private func autoCaptionButtonTitle(_ mode: PlaybackAutoCaptionMode) -> String {
-        let title = "Automatic: \(mode.title)"
-        return autoCaptionMode == mode ? "\(title)  ✓" : title
     }
 
     @ViewBuilder
