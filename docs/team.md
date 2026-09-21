@@ -1,6 +1,8 @@
 # Joe-TV team roster
 
-Status: **Verified team work is merged and pushed to main. Version 1.0 build8 uploaded successfully to App Store Connect and entered processing; availability not yet verified. PM owns this release. The previously verified simulator app remains open for Joe.**
+Status: **S6 base Joe-TV guide sizing and caption controls are under final verification on `codex/base-guide-captions` in `/Users/joecoakley/SeasonsTV`. The last release remains version1.0/build8. No S6 push/upload is authorized.** See [current assignment](assignments/S6-guide-captions.md) and [integration acceptance](assessments/S6-integration.md); older runtime checkpoints below are historical.
+
+S6 reuses App (`codex/joe-tv-app-s6`, original0b9c worktree), Playback (`codex/joe-tv-playback-s6`, original52e6 worktree) and QA (`codex/joe-tv-qa-s6`, original5350 worktree). PM owns the sole dedicated base simulator session documented in the acceptance report. Other roles and the separate Plex worktrees are idle for this scope. Model choices: Sol medium App/QA and Sol high initial Playback; medium for the bounded compiler follow-up.
 Codex project: SeasonsTV (`8f337b91-9b82-4cb2-b34e-d23cb87622a8`)
 Repository: `/Users/joecoakley/SeasonsTV`
 Spec revision: TEAM-4 (small implementation sprint authorized). Original technical assessments retain TEAM-1 provenance; Design/App adopted TEAM-2.
