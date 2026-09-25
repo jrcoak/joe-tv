@@ -120,6 +120,84 @@ enum PlaybackPayloadBuilder {
     }
 }
 
+enum FootballPlaybackRefreshError: Error, Equatable {
+    case eventUnavailable
+    case optionUnavailable
+    case ambiguousOption
+}
+
+struct FootballPlaybackOptionIdentity: Equatable, Hashable {
+    let feed: String
+    let isDVR: Bool
+
+    init(_ option: MediaItem.PlaybackOption) {
+        isDVR = option.isStartOver
+        let normalized = option.title
+            .folding(
+                options: [.diacriticInsensitive, .caseInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .lowercased()
+        if normalized.contains("home") {
+            feed = "home"
+        } else if normalized.contains("away") {
+            feed = "away"
+        } else if normalized.contains("international") || normalized.contains("intl") {
+            feed = "international"
+        } else if normalized.contains("national") {
+            feed = "national"
+        } else if normalized.contains("us feed") || normalized.contains("u.s.") {
+            feed = "us"
+        } else if normalized.contains("spanish") {
+            feed = "spanish"
+        } else if normalized.contains("radio") {
+            feed = "radio"
+        } else if normalized.contains("alternate") {
+            feed = "alternate"
+        } else {
+            feed = normalized
+                .replacingOccurrences(of: #"\b(?:5[ -]?min(?:ute)?|dvr|start over|live|feed|stream)\b"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+}
+
+enum FootballPlaybackRefresh {
+    static func requiresRefresh(
+        item: MediaItem,
+        option: MediaItem.PlaybackOption
+    ) -> Bool {
+        guard item.id.hasPrefix("dynamic|football|") else { return false }
+        if case .hls = option.playback { return true }
+        return false
+    }
+
+    static func refreshedOption(
+        for item: MediaItem,
+        selectedOption: MediaItem.PlaybackOption,
+        in freshItems: [MediaItem]
+    ) throws -> MediaItem.PlaybackOption {
+        let matchingEvents = freshItems.filter { $0.id == item.id }
+        guard matchingEvents.count == 1, let freshItem = matchingEvents.first else {
+            throw FootballPlaybackRefreshError.eventUnavailable
+        }
+
+        let selectedIdentity = FootballPlaybackOptionIdentity(selectedOption)
+        let matchingOptions = freshItem.playbackOptions.filter {
+            $0.isPlayable && FootballPlaybackOptionIdentity($0) == selectedIdentity
+        }
+        guard !matchingOptions.isEmpty else {
+            throw FootballPlaybackRefreshError.optionUnavailable
+        }
+        guard matchingOptions.count == 1, let refreshed = matchingOptions.first else {
+            throw FootballPlaybackRefreshError.ambiguousOption
+        }
+        return refreshed
+    }
+}
+
 final class SeasonsClient {
     let baseURL = URL(string: "https://seasons4u.com")!
     private let cookieStorage: HTTPCookieStorage
@@ -235,6 +313,12 @@ final class SeasonsClient {
             baseURL: baseURL,
             directStreamTemplate: directStreamTemplate
         )
+    }
+
+    func refreshCurrentFootballGames() async throws -> [MediaItem] {
+        let playerHTML = try await loadAuthenticatedHTML(path: "/Player")
+        let directStreamTemplate = HTMLCatalogParser.footballDirectStreamTemplate(in: playerHTML)
+        return try await loadCurrentFootballGames(directStreamTemplate: directStreamTemplate)
     }
 
     private func loadCurrentBaseballEvents() async throws -> [MediaItem] {

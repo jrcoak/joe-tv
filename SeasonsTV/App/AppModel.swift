@@ -1204,7 +1204,33 @@ final class AppModel: ObservableObject {
                 return false
             }
         }()
-        let playback = option?.playback ?? item.playback
+        let selectedOption = option ?? item.playbackOptions.first(where: \.isPlayable)
+        let playback: MediaItem.Playback
+        if let selectedOption,
+           FootballPlaybackRefresh.requiresRefresh(item: item, option: selectedOption) {
+            let freshFootball = try await client.refreshCurrentFootballGames()
+            do {
+                playback = try FootballPlaybackRefresh.refreshedOption(
+                    for: item,
+                    selectedOption: selectedOption,
+                    in: freshFootball
+                ).playback
+            } catch FootballPlaybackRefreshError.eventUnavailable {
+                throw SeasonsError.message(
+                    "That football event is no longer available. Refresh Sports and try again."
+                )
+            } catch FootballPlaybackRefreshError.optionUnavailable {
+                throw SeasonsError.message(
+                    "That football feed is no longer available. Refresh Sports and choose another feed."
+                )
+            } catch FootballPlaybackRefreshError.ambiguousOption {
+                throw SeasonsError.message(
+                    "That football feed changed and could not be selected safely. Refresh Sports and choose it again."
+                )
+            }
+        } else {
+            playback = selectedOption?.playback ?? item.playback
+        }
         #if DEBUG
         if case .request(let request) = playback, request.endpoint == "debug" {
             return PlaybackSession(debugTitle: item.title, isLivePlayback: startAtLiveEdge)
