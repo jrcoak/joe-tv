@@ -333,14 +333,12 @@ enum ParserSmoke {
               espnGame.broadcastChannels == ["ESPN"] else {
             fatalError("Direct ESPN NFL scoreboard metadata was not decoded")
         }
-        var nflWeekCalendar = Calendar(identifier: .gregorian)
-        nflWeekCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let nflWeekWednesday = Date(timeIntervalSince1970: 1_788_955_200)
-        guard ESPNScoreboardClient.dateRangeKey(
-            nflWeekWednesday,
-            calendar: nflWeekCalendar
-        ) == "20260909-20260915" else {
-            fatalError("Direct ESPN NFL scoreboard range no longer runs through Tuesday")
+        let nflWindow = NFLScoreboardCalendar.window(containing: nflWeekWednesday)
+        guard nflWindow.identity == "20260909-20260916",
+              nflWindow.contains(nflWeekWednesday),
+              nflWindow.cutoff == NFLScoreboardCalendar.throughTuesdayCutoff(containing: nflWeekWednesday) else {
+            fatalError("Direct ESPN NFL scoreboard window no longer uses the Eastern through-Tuesday cutoff")
         }
 
         let sleeperLeagueJSON = Data(#"{"league_id":"123456789","name":"Sunday Ticket Society","avatar":"league-avatar"}"#.utf8)

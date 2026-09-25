@@ -1,10 +1,51 @@
 import Foundation
 
+struct NFLScoreboardDateWindow: Equatable, Sendable {
+    let start: Date
+    /// Exclusive start of the day after Tuesday in the NFL schedule time zone.
+    let cutoff: Date
+    let identity: String
+
+    func contains(_ date: Date) -> Bool { date >= start && date < cutoff }
+}
+
+enum NFLScoreboardCalendar {
+    static let timeZoneIdentifier = "America/New_York"
+
+    static func window(containing referenceDate: Date) -> NFLScoreboardDateWindow {
+        let calendar = calendar()
+        let start = calendar.startOfDay(for: referenceDate)
+        let weekday = calendar.component(.weekday, from: start)
+        let daysThroughTuesday = (3 - weekday + 7) % 7
+        let tuesday = calendar.date(byAdding: .day, value: daysThroughTuesday, to: start) ?? start
+        let cutoff = calendar.date(byAdding: .day, value: 1, to: tuesday) ?? tuesday
+        return NFLScoreboardDateWindow(start: start, cutoff: cutoff,
+            identity: "\(dateKey(start, calendar: calendar))-\(dateKey(cutoff, calendar: calendar))")
+    }
+
+    static func throughTuesdayCutoff(containing referenceDate: Date) -> Date {
+        window(containing: referenceDate).cutoff
+    }
+
+    private static func calendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier)!
+        return calendar
+    }
+
+    private static func dateKey(_ date: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d%02d%02d", components.year ?? 0,
+                      components.month ?? 0, components.day ?? 0)
+    }
+}
+
 actor ESPNScoreboardClient: LiveNFLScoreProviding {
     private static let minimumRefreshInterval: TimeInterval = 20
     private let session: URLSession
     private var cachedEvents: [SportsScheduleEvent] = []
-    private var cachedDateKey = ""
+    private var cachedWindowIdentity = ""
     private var lastRefresh: Date?
 
     init(session: URLSession = .shared) {
@@ -12,8 +53,8 @@ actor ESPNScoreboardClient: LiveNFLScoreProviding {
     }
 
     func loadNFLScoreboard(referenceDate: Date = Date()) async throws -> [SportsScheduleEvent] {
-        let dateKey = Self.dateRangeKey(referenceDate)
-        if dateKey == cachedDateKey,
+        let windowIdentity = NFLScoreboardCalendar.window(containing: referenceDate).identity
+        if windowIdentity == cachedWindowIdentity,
            let lastRefresh,
            referenceDate.timeIntervalSince(lastRefresh) < Self.minimumRefreshInterval {
             return cachedEvents
@@ -23,7 +64,6 @@ actor ESPNScoreboardClient: LiveNFLScoreProviding {
             string: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         )!
         components.queryItems = [
-            URLQueryItem(name: "dates", value: dateKey),
             URLQueryItem(name: "limit", value: "100")
         ]
         guard let url = components.url else { throw ESPNScoreboardError.invalidResponse }
@@ -40,28 +80,9 @@ actor ESPNScoreboardClient: LiveNFLScoreProviding {
         }
         let events = try ESPNScoreboardParser.decode(data)
         cachedEvents = events
-        cachedDateKey = dateKey
+        cachedWindowIdentity = windowIdentity
         lastRefresh = referenceDate
         return events
-    }
-
-    static func dateRangeKey(_ date: Date, calendar: Calendar = .current) -> String {
-        let start = calendar.startOfDay(for: date)
-        let weekday = calendar.component(.weekday, from: start)
-        let tuesdayWeekday = 3
-        let daysThroughTuesday = (tuesdayWeekday - weekday + 7) % 7
-        let end = calendar.date(byAdding: .day, value: daysThroughTuesday, to: start) ?? start
-        return "\(dateKey(start, calendar: calendar))-\(dateKey(end, calendar: calendar))"
-    }
-
-    private static func dateKey(_ date: Date, calendar: Calendar) -> String {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(
-            format: "%04d%02d%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0
-        )
     }
 }
 
