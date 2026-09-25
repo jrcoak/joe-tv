@@ -20,3 +20,7 @@ PM owns S7-FIX-UI: dedicated `Joe-TV Team QA` simulator C95B257D-0111-40A1-9D02-
 ## Deployment boundary
 
 Publisher local tests do not repair the installed Mac mini. `joes-mac-mini.local` is discovered/reachable but batch SSH as josephcoakley lacks authentication; await the existing connection method. No credentials requested in chat, no remote mutation yet. App release requires specific delivery authorization after this candidate is reviewable. Exact September24 stream failure cause remains unproven; stale-link fix is a confirmed code hazard repair.
+
+## Runtime closure
+
+S7-FIX-UI released September 25 after final `67fc994` simulator build and status/focus checks. Dedicated QA device was shut down; user E98B device left booted. See `docs/assessments/S7-fix.md` for results and operational blockers.
