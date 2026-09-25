@@ -1423,6 +1423,23 @@ struct JoeTVSportsView: View {
             ) { showsFantasySettings = true }
         } else {
             VStack(alignment: .leading, spacing: 12) {
+                if model.fantasyNFLScoreState.isLoading {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Updating NFL scores…")
+                            .font(.callout)
+                            .foregroundStyle(SeasonTheme.secondaryText)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 6)
+                    .accessibilityElement(children: .combine)
+                } else if model.fantasyNFLScoreState.errorMessage != nil, !nflItems.isEmpty {
+                    InlineStatusBanner(message: "Scores may be out of date") {
+                        Task { await model.refreshFantasyZone() }
+                    }
+                    .padding(.horizontal, 6)
+                }
+
                 fantasyStreamingOptions(at: date, liveGames: nflItems)
 
                 if !nflItems.isEmpty {
@@ -1473,6 +1490,32 @@ struct JoeTVSportsView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .clipped()
+                } else if model.fantasyNFLScoreState.isLoading {
+                    Spacer(minLength: 0)
+                } else if model.fantasyNFLScoreState.errorMessage != nil {
+                    JoeTVEmptyState(
+                        title: "NFL scores unavailable",
+                        message: "NFL scores are unavailable right now.",
+                        symbol: "exclamationmark.triangle",
+                        actionTitle: "Retry Scores",
+                        focusedID: $focusedID,
+                        focusID: "fantasy-scores-retry"
+                    ) {
+                        Task { await model.refreshFantasyZone() }
+                    }
+                } else {
+                    JoeTVEmptyState(
+                        title: showsLiveGames ? "No live games listed" : "No upcoming games listed",
+                        message: showsLiveGames
+                            ? "There are no live NFL games right now."
+                            : "The next NFL games are lining up.",
+                        symbol: showsLiveGames ? "clock" : "calendar.badge.clock",
+                        actionTitle: "Refresh Scores",
+                        focusedID: $focusedID,
+                        focusID: "fantasy-scores-refresh"
+                    ) {
+                        Task { await model.refreshFantasyZone() }
+                    }
                 }
             }
         }
@@ -1806,12 +1849,7 @@ struct JoeTVSportsView: View {
     }
 
     private func fantasyNFLUpcomingItems(at date: Date) -> [MediaItem] {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: date)
-        let weekday = calendar.component(.weekday, from: start)
-        let daysThroughTuesday = (3 - weekday + 7) % 7
-        let tuesday = calendar.date(byAdding: .day, value: daysThroughTuesday, to: start) ?? start
-        let cutoff = calendar.date(byAdding: .day, value: 1, to: tuesday) ?? .distantFuture
+        let cutoff = NFLScoreboardCalendar.throughTuesdayCutoff(containing: date)
 
         return model.fantasyNFLScoreItems.filter { item in
             guard item.categoryID == "nfl",
