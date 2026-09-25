@@ -1434,9 +1434,30 @@ struct JoeTVSportsView: View {
                     .padding(.horizontal, 6)
                     .accessibilityElement(children: .combine)
                 } else if model.fantasyNFLScoreState.errorMessage != nil, !nflItems.isEmpty {
-                    InlineStatusBanner(message: "Scores may be out of date") {
-                        Task { await model.refreshFantasyZone() }
+                    HStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                            .foregroundStyle(SeasonTheme.liveSignal)
+                        Text("Scores may be out of date")
+                            .font(.callout)
+                            .foregroundStyle(SeasonTheme.secondaryText)
+                            .lineLimit(2)
+                        Spacer()
+                        Button("Retry") {
+                            Task { await model.refreshFantasyZone() }
+                        }
+                        .buttonStyle(.bordered)
+                        .focused($focusedID, equals: "fantasy-scores-stale-retry")
+                        .onKeyPress(.upArrow) {
+                            focusCurrentScope()
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            focusFantasyContent(at: date) ? .handled : .ignored
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(SeasonTheme.surface, in: RoundedRectangle(cornerRadius: SeasonTheme.controlRadius))
                     .padding(.horizontal, 6)
                 }
 
@@ -1707,6 +1728,11 @@ struct JoeTVSportsView: View {
 
     private func focusSelectedEvent(at date: Date) {
         if showsFantasyZone {
+            if model.fantasyNFLScoreState.errorMessage != nil,
+               !fantasyNFLDisplayItems(at: date).isEmpty {
+                focusedID = "fantasy-scores-stale-retry"
+                return
+            }
             if let channel = model.fantasyWatchChannels.first {
                 focusedID = "fantasy-stream:\(channel.id)"
                 return
@@ -1725,6 +1751,18 @@ struct JoeTVSportsView: View {
         let item = selectedItem(at: date)
         guard let item else { return }
         focusedID = "event:\(item.id)"
+    }
+
+    private func focusFantasyContent(at date: Date) -> Bool {
+        if let channel = model.fantasyWatchChannels.first {
+            focusedID = "fantasy-stream:\(channel.id)"
+            return true
+        }
+        if let item = fantasyNFLDisplayItems(at: date).first {
+            focusedID = "event:\(item.id)"
+            return true
+        }
+        return false
     }
 
     private func focusCurrentScope() {
