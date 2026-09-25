@@ -78,6 +78,16 @@ private enum FootballPlaybackRefreshSmoke {
     }
 
     static func main() throws {
+        let playerRequest = FootballPlaybackRefresh.playerMetadataRequest(
+            baseURL: URL(string: "https://seasons4u.com")!
+        )
+        check(playerRequest.url?.absoluteString == "https://seasons4u.com/Player", "Refresh requested the wrong page")
+        check(playerRequest.httpMethod == "GET", "Refresh Player request was not GET")
+        check(
+            playerRequest.cachePolicy == .reloadIgnoringLocalCacheData,
+            "Refresh Player request allowed a cached signed template"
+        )
+
         let old = parsedFootball(
             streams: """
             {"typ":14,"desc":"Away Feed","descweb":"away-old"},
@@ -204,6 +214,66 @@ private enum FootballPlaybackRefreshSmoke {
         }
         check(request.arguments[2] == "home", "Refreshed request changed the selected feed")
         check(request.arguments[4] == "false", "Refreshed request changed live/DVR mode")
+
+        let scheduleEvent = SportsScheduleEvent(
+            eventID: "espn-42",
+            title: "Owls at Bears",
+            sport: "Football",
+            leagueID: "nfl",
+            league: "NFL",
+            startsAt: Date(timeIntervalSince1970: 1_800_000_000),
+            endsAt: Date(timeIntervalSince1970: 1_800_014_400),
+            status: "Scheduled",
+            venue: nil,
+            country: nil,
+            homeTeamID: nil,
+            homeTeam: "Bears",
+            homeTeamLogoURL: nil,
+            awayTeamID: nil,
+            awayTeam: "Owls",
+            awayTeamLogoURL: nil,
+            homeScore: nil,
+            awayScore: nil,
+            thumbnailURL: nil,
+            sourceDate: nil,
+            sourceTime: nil,
+            broadcasts: []
+        )
+        let enriched = SportsScheduleEnricher.merge(
+            SportsScheduleSnapshot(
+                provider: "fixture",
+                generatedAt: Date(timeIntervalSince1970: 1_799_990_000),
+                windowStart: "20270115",
+                windowEnd: "20270116",
+                events: [scheduleEvent]
+            ),
+            into: [CatalogCategory(id: "football", title: "Football", symbol: "football.fill", items: [old])]
+        )
+        let consolidated = SportsEventGuidePolicy.consolidatedItems(categories: enriched, espnPlusItems: [])
+        guard let sportsCard = consolidated.first(where: { $0.sportsEvent?.eventID == scheduleEvent.eventID }) else {
+            fatalError("Dynamic football fixture did not reach consolidated Sports")
+        }
+        check(sportsCard.id == old.id, "Sports consolidation replaced the stable dynamic football ID")
+        check(
+            FootballPlaybackRefresh.requiresRefresh(item: sportsCard, option: option(titled: "Home Feed", in: sportsCard)),
+            "Consolidated Sports football card bypassed selection refresh"
+        )
+
+        let fantasyCard = MediaItem(
+            id: sportsCard.id,
+            title: scheduleEvent.title,
+            subtitle: scheduleEvent.status,
+            imageURL: sportsCard.imageURL,
+            categoryID: "nfl",
+            playbackOptions: sportsCard.playbackOptions,
+            sportsEvent: scheduleEvent,
+            providerEventDateCode: sportsCard.providerEventDateCode
+        )
+        check(fantasyCard.id == old.id, "Fantasy projection replaced the stable dynamic football ID")
+        check(
+            FootballPlaybackRefresh.requiresRefresh(item: fantasyCard, option: option(titled: "Home Feed", in: fantasyCard)),
+            "Fantasy football card bypassed selection refresh"
+        )
 
         print("Football playback refresh smoke passed (\(checks) checks)")
     }

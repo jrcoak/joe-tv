@@ -165,6 +165,15 @@ struct FootballPlaybackOptionIdentity: Equatable, Hashable {
 }
 
 enum FootballPlaybackRefresh {
+    static func playerMetadataRequest(baseURL: URL) -> URLRequest {
+        var request = URLRequest(
+            url: baseURL.appending(path: "/Player"),
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+        request.httpMethod = "GET"
+        return request
+    }
+
     static func requiresRefresh(
         item: MediaItem,
         option: MediaItem.PlaybackOption
@@ -316,7 +325,9 @@ final class SeasonsClient {
     }
 
     func refreshCurrentFootballGames() async throws -> [MediaItem] {
-        let playerHTML = try await loadAuthenticatedHTML(path: "/Player")
+        let playerHTML = try await loadAuthenticatedHTML(
+            request: FootballPlaybackRefresh.playerMetadataRequest(baseURL: baseURL)
+        )
         let directStreamTemplate = HTMLCatalogParser.footballDirectStreamTemplate(in: playerHTML)
         return try await loadCurrentFootballGames(directStreamTemplate: directStreamTemplate)
     }
@@ -410,8 +421,11 @@ final class SeasonsClient {
     }
 
     private func loadAuthenticatedHTML(path: String) async throws -> String {
-        let url = baseURL.appending(path: path)
-        let (data, response) = try await session.data(from: url)
+        try await loadAuthenticatedHTML(request: URLRequest(url: baseURL.appending(path: path)))
+    }
+
+    private func loadAuthenticatedHTML(request: URLRequest) async throws -> String {
+        let (data, response) = try await session.data(for: request)
         try validate(response)
         guard let html = String(data: data, encoding: .utf8) else {
             throw SeasonsError.invalidResponse
