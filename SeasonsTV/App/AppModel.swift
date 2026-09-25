@@ -167,8 +167,10 @@ final class AppModel: ObservableObject {
         #endif
         var appDefaults = defaults
         #if DEBUG
-        if navigationFixture {
-            let suite = "com.jrcoak.joetv.debug.navigation"
+        if navigationFixture || ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_ZONE"] == "1" {
+            let suite = navigationFixture
+                ? "com.jrcoak.joetv.debug.navigation"
+                : "com.jrcoak.joetv.debug.fantasy"
             guard let fixtureDefaults = UserDefaults(suiteName: suite) else {
                 fatalError("Unable to create isolated navigation fixture preferences")
             }
@@ -1518,6 +1520,26 @@ final class AppModel: ObservableObject {
         sportsScheduleState = .loaded
         fantasyNFLScoreboard = games.compactMap(\.sportsEvent)
         fantasyNFLScoreState = .loaded
+        // Offline UI acceptance states; confined to the DEBUG fixture and its
+        // isolated defaults. Production refreshes always use the real provider.
+        switch ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_SCORE_STATE"] {
+        case "failed":
+            fantasyNFLScoreboard = []
+            fantasyNFLScoreState = .failed("Offline fixture failure")
+        case "stale":
+            fantasyNFLScoreState = .failed("Offline fixture failure")
+        case "loading":
+            fantasyNFLScoreboard = []
+            fantasyNFLScoreState = .loading
+        case "empty":
+            fantasyNFLScoreboard = []
+        default:
+            break
+        }
+        if ProcessInfo.processInfo.environment["JOE_TV_DEBUG_FANTASY_NO_CHANNELS"] == "1" {
+            liveChannels = []
+            availableLiveChannels = []
+        }
         espnPlusState = .loaded
         fantasyZoneEnabled = true
         fantasyUsername = "jrcoakley"
