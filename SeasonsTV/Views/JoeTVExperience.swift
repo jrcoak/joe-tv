@@ -1706,11 +1706,23 @@ struct JoeTVSportsView: View {
     }
 
     private func focusSelectedEvent(at date: Date) {
-        if showsFantasyZone, let channel = model.fantasyWatchChannels.first {
-            focusedID = "fantasy-stream:\(channel.id)"
+        if showsFantasyZone {
+            if let channel = model.fantasyWatchChannels.first {
+                focusedID = "fantasy-stream:\(channel.id)"
+                return
+            }
+            if let item = fantasyNFLDisplayItems(at: date).first {
+                focusedID = "event:\(item.id)"
+                return
+            }
+            if !model.fantasyNFLScoreState.isLoading {
+                focusedID = model.fantasyNFLScoreState.errorMessage == nil
+                    ? "fantasy-scores-refresh"
+                    : "fantasy-scores-retry"
+            }
             return
         }
-        let item = showsFantasyZone ? fantasyNFLDisplayItems(at: date).first : selectedItem(at: date)
+        let item = selectedItem(at: date)
         guard let item else { return }
         focusedID = "event:\(item.id)"
     }
