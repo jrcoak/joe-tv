@@ -40,3 +40,7 @@ Joe ran the existing publisher manually on the Mac mini. September 26 API checks
 ## App release authorization — September 26
 
 After fresh production metadata verification, Joe authorized the proposed next TestFlight build. PM owns S7-RELEASE-10, including the 9→10 project build-number change, final release checks, main integration/push, signed archive and upload. All runtime/build resources are exclusively PM-owned until upload completion; no simulator or provider stream is needed. Release record: `docs/releases/1.0-10.md`. No new tester, credentials or distribution policy changes are included.
+
+## App release completion — September 26
+
+Source `ff68e4b` is pushed to main as Joe-TV 1.0 (10). Fresh smoke, ESPN client, football refresh, simulator build, signed archive and configuration checks passed. SecOps packaging review accepted (GPT-5.6 Luna, medium). Apple confirmed upload success and processing at 14:30:22 EDT; tester availability remains unconfirmed because the App Store Connect website is signed out. PM released S7-RELEASE-10 runtime ownership. No simulator or authenticated playback was used; physical football/FairPlay validation remains pending. See `docs/releases/1.0-10.md` for the immutable archive source and receipts.
