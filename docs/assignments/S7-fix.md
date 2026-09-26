@@ -36,3 +36,7 @@ Joe approved the specific publisher installation on September 26. PM replaced th
 ## Publication completion
 
 Joe ran the existing publisher manually on the Mac mini. September 26 API checks confirmed fresh schedule and event details, including Thursday's game. Publisher deployment is complete; app release and physical playback validation remain separate. See the production verification checkpoint in `docs/assessments/S7-fix.md`.
+
+## App release authorization — September 26
+
+After fresh production metadata verification, Joe authorized the proposed next TestFlight build. PM owns S7-RELEASE-10, including the 9→10 project build-number change, final release checks, main integration/push, signed archive and upload. All runtime/build resources are exclusively PM-owned until upload completion; no simulator or provider stream is needed. Release record: `docs/releases/1.0-10.md`. No new tester, credentials or distribution policy changes are included.
