@@ -32,3 +32,7 @@ September 25 follow-up: the Mac mini home share is available in Finder at `/Volu
 ## Installation completion
 
 Joe approved the specific publisher installation on September 26. PM replaced the script through Finder/SMB and verified the remote read-back hash matches `a076dbb`. The prior review block is resolved. Production publication remains pending the configured job run or an authorized remote execution method; no job configuration or credentials changed. See the installation checkpoint in `docs/assessments/S7-fix.md`.
+
+## Publication completion
+
+Joe ran the existing publisher manually on the Mac mini. September 26 API checks confirmed fresh schedule and event details, including Thursday's game. Publisher deployment is complete; app release and physical playback validation remain separate. See the production verification checkpoint in `docs/assessments/S7-fix.md`.

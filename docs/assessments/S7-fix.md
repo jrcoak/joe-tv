@@ -62,3 +62,15 @@ After replacement, PM copied the installed file back through Finder into `/tmp/j
 Read-only API verification at approximately 13:28 EDT returned HTTP 200 but the prior snapshot: generated September 15 at 07:00:06 UTC, window September 14–23, 181 events. **Installation is complete; a successful production publication is not yet observed.** The installed LaunchAgent is configured for daily 03:00; the next configured run is September 27 at 03:00 local Mac time. SMB access installs files but does not start a process on the remote Mac. PM did not run the publisher locally with copied credentials, alter the schedule, or claim that replacement alone refreshed the data.
 
 No app push, TestFlight upload, physical playback test, or authenticated provider stream was performed in this installation step. The base app fixes remain on the local integration branch pending a separately authorized release.
+
+## Production publication verified — September 26, 14:07–14:08 EDT
+
+After Joe ran `/bin/bash "$HOME/sports-schedule/run-sports-schedule.sh"` on the Mac mini and reported completion, PM verified the stored API data using the existing read-only app token (never printed or saved in outputs).
+
+- Schedule GET returned HTTP 200 with `generatedAt=2026-09-26T18:06:24.651+00:00`, approximately one minute old at inspection. Window: September 25–October 4. The stale September 15 publication has been replaced.
+- 158 events: NFL 30, MLB 66, NHL 59, NBA 3. No duplicate event IDs.
+- Thursday event `401872948`, Atlanta at Green Bay, is present with its correct UTC-midnight start (`2026-09-25T00:15Z`) and Final status. Upcoming NFL games include Patriots at Jacksonville on September 27 and the October 1 Thursday matchup.
+- Upcoming Patriots/Jaguars detail `401872957` returned HTTP 200 with a preview and `fetchedAt` matching the new publication timestamp, confirming the detail upload as well as the schedule upload.
+- Thursday's older detail returned 404; its kickoff is more than 24 hours before generation and lies outside the publisher's configured detail lookback. This does not remove it from the schedule; current preview publication succeeded.
+
+The publisher installation and resulting production publication are now verified. This supersedes the earlier pending-publication checkpoints. The app-side Fantasy request/UI and fresh football-link fixes remain local and require a separately authorized new app release; production data verification does not establish physical-device playback or FairPlay success.
