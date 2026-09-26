@@ -28,3 +28,7 @@ S7-FIX-UI released September 25 after final `67fc994` simulator build and status
 ## Direct file access and installation approval
 
 September 25 follow-up: the Mac mini home share is available in Finder at `/Volumes/josephcoakley`. Installed source/log/job inspection is complete and rollback is staged. Automatic approval review blocked the specific production script replacement; an explicit install approval question is pending. Do not use another route to perform that rejected replacement without approval. Details and hashes are in `docs/assessments/S7-fix.md`.
+
+## Installation completion
+
+Joe approved the specific publisher installation on September 26. PM replaced the script through Finder/SMB and verified the remote read-back hash matches `a076dbb`. The prior review block is resolved. Production publication remains pending the configured job run or an authorized remote execution method; no job configuration or credentials changed. See the installation checkpoint in `docs/assessments/S7-fix.md`.

@@ -50,3 +50,15 @@ Using Finder, PM copied only the installed publisher script, launch shell script
 A rollback file was copied through Finder to `/Volumes/josephcoakley/sports-schedule/backups/fetch-sports-schedule.before-s7-20260925.mjs`. The tested replacement is PersonalMediaAPI `a076dbb`, SHA-256 `ae10fbf4f119a774280196a34041e4016b76f44c11102d84f11084e51b79b515`.
 
 Automatic approval review rejected pasting/replacing the live publisher, stating that fixing code and direct file access did not clearly authorize this specific production installation. PM did not retry or route around the rejection. Explicit deployment approval was requested via the pending question. The original production script, job configuration, credentials and published data remain unchanged; the only remote write so far is the rollback copy. SMB file access does not itself provide remote process execution or prove a refreshed publication.
+
+## Approved installation — September 26
+
+Joe explicitly approved the pending production replacement: “yes. change it.” This resolves the prior automatic-review approval block for this specific publisher installation.
+
+At approximately 13:27 EDT, PM used Finder's existing SMB connection to replace only `/Volumes/josephcoakley/sports-schedule/fetch-sports-schedule.mjs` with the tested PersonalMediaAPI `a076dbb` file. Before replacement, a fresh copy of the installed file was compared with the original baseline and found identical; no intervening remote edits were overwritten. The September 25 rollback copy remains the documented restore artifact.
+
+After replacement, PM copied the installed file back through Finder into `/tmp/joe-tv-s7-mini-inspect/installed-20260926`. Byte-for-byte comparison with the tested source passed. SHA-256: `ae10fbf4f119a774280196a34041e4016b76f44c11102d84f11084e51b79b515`. `node --check` on the read-back file also passed. No configuration, credentials, LaunchAgent schedule, or wrapper script was changed.
+
+Read-only API verification at approximately 13:28 EDT returned HTTP 200 but the prior snapshot: generated September 15 at 07:00:06 UTC, window September 14–23, 181 events. **Installation is complete; a successful production publication is not yet observed.** The installed LaunchAgent is configured for daily 03:00; the next configured run is September 27 at 03:00 local Mac time. SMB access installs files but does not start a process on the remote Mac. PM did not run the publisher locally with copied credentials, alter the schedule, or claim that replacement alone refreshed the data.
+
+No app push, TestFlight upload, physical playback test, or authenticated provider stream was performed in this installation step. The base app fixes remain on the local integration branch pending a separately authorized release.
