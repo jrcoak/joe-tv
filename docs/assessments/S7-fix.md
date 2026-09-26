@@ -40,3 +40,13 @@ No authenticated Seasons4U playback probe, physical Apple TV test, main push, re
 Final app candidate `67fc994` built successfully with `scripts/team-check.sh build`. QA accepted the final stale Retry delta by source review. PM verified native header Down → stale Retry, Retry Down → first watch card, and Retry Up → Fantasy controls. Earlier no-channel error Down/Up, loading, empty and retained-card states passed visual verification. No further code changes followed this build.
 
 The fixture was terminated and dedicated QA simulator C95B was shut down, verified afterward. The user's E98B simulator remained booted and untouched. S7-FIX-UI runtime ownership is released. Source is committed locally; publisher deployment/authentication, hardware playback evidence and release are outstanding.
+
+## Mounted-share follow-up — September 25
+
+Joe clarified that direct file access is available. Verified SMB home share: `/Volumes/josephcoakley`, mounted from Joe’s Mac mini. Command-line reads fail with `Operation not permitted` even outside the sandbox, but the existing Finder connection can read/copy files. SSH authentication is therefore not required for file installation; its earlier failure is no longer the deployment access blocker.
+
+Using Finder, PM copied only the installed publisher script, launch shell script, sports LaunchAgent plist and error log into `/tmp/joe-tv-s7-mini-inspect` for read-only comparison. No environment/credential file was copied or displayed. The installed publisher exactly matches the `936ad86` repository baseline, SHA-256 `2ba7af0cb32a0f831e9a42dca917af552baccb2e1f419cdcfcc2882ae571c12a`. Its error log contains nine HTTP 400 / “Failed to get events endpoint” failures; there are no per-entry timestamps to attribute them individually to September 24. The installed LaunchAgent runs the existing shell script daily at 03:00 and at load.
+
+A rollback file was copied through Finder to `/Volumes/josephcoakley/sports-schedule/backups/fetch-sports-schedule.before-s7-20260925.mjs`. The tested replacement is PersonalMediaAPI `a076dbb`, SHA-256 `ae10fbf4f119a774280196a34041e4016b76f44c11102d84f11084e51b79b515`.
+
+Automatic approval review rejected pasting/replacing the live publisher, stating that fixing code and direct file access did not clearly authorize this specific production installation. PM did not retry or route around the rejection. Explicit deployment approval was requested via the pending question. The original production script, job configuration, credentials and published data remain unchanged; the only remote write so far is the rollback copy. SMB file access does not itself provide remote process execution or prove a refreshed publication.

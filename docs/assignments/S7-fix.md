@@ -24,3 +24,7 @@ Publisher local tests do not repair the installed Mac mini. `joes-mac-mini.local
 ## Runtime closure
 
 S7-FIX-UI released September 25 after final `67fc994` simulator build and status/focus checks. Dedicated QA device was shut down; user E98B device left booted. See `docs/assessments/S7-fix.md` for results and operational blockers.
+
+## Direct file access and installation approval
+
+September 25 follow-up: the Mac mini home share is available in Finder at `/Volumes/josephcoakley`. Installed source/log/job inspection is complete and rollback is staged. Automatic approval review blocked the specific production script replacement; an explicit install approval question is pending. Do not use another route to perform that rejected replacement without approval. Details and hashes are in `docs/assessments/S7-fix.md`.
