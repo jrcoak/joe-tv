@@ -1493,6 +1493,263 @@ enum PlaybackCaptionPolicy {
     }
 }
 
+struct PlaybackFailureLogEvidence: Equatable {
+    let errorDomain: String?
+    let errorCode: Int
+}
+
+struct PlaybackFailurePresentation: Equatable {
+    enum Cause: Equatable {
+        case authorization
+        case unavailable
+        case timeout
+        case network
+        case secureConnection
+        case format
+        case protectedContent
+        case service
+        case media
+        case unknown
+    }
+
+    let cause: Cause
+    let message: String
+    let supportCode: String
+}
+
+enum PlaybackFailureClassifier {
+    private enum DomainFamily: String {
+        case url = "URL"
+        case avFoundation = "AVF"
+        case coreMedia = "CM"
+        case osStatus = "OS"
+        case http = "HTTP"
+    }
+
+    private struct Observation: Hashable {
+        let family: DomainFamily
+        let code: Int
+    }
+
+    private static let maximumErrorDepth = 4
+    private static let maximumSupportObservations = 2
+
+    static func classify(
+        error: NSError?,
+        fallbackDomain: String? = nil,
+        fallbackCode: Int? = nil,
+        latestErrorLog: PlaybackFailureLogEvidence? = nil
+    ) -> PlaybackFailurePresentation {
+        var observations = observations(in: error)
+        if observations.isEmpty,
+           let fallbackDomain,
+           let fallbackCode,
+           let family = family(for: fallbackDomain) {
+            observations.append(Observation(family: family, code: fallbackCode))
+        }
+        let latestObservation = latestErrorLog.flatMap { evidence -> Observation? in
+            guard let domain = evidence.errorDomain,
+                  let family = family(for: domain) else { return nil }
+            return Observation(family: family, code: evidence.errorCode)
+        }
+        if let latestObservation { observations.append(latestObservation) }
+        observations = observations.reduce(into: []) { result, observation in
+            if !result.contains(observation) { result.append(observation) }
+        }
+
+        let cause = cause(for: observations)
+        let supportCode = makeSupportCode(
+            observations: observations,
+            latestObservation: latestObservation
+        )
+        return PlaybackFailurePresentation(
+            cause: cause,
+            message: message(for: cause),
+            supportCode: supportCode
+        )
+    }
+
+    private static func observations(in rootError: NSError?) -> [Observation] {
+        var result: [Observation] = []
+        var current = rootError
+        var visited = Set<ObjectIdentifier>()
+        var depth = 0
+
+        while let error = current, depth < maximumErrorDepth {
+            let identity = ObjectIdentifier(error)
+            guard visited.insert(identity).inserted else { break }
+            if let family = family(for: error.domain) {
+                result.append(Observation(family: family, code: error.code))
+            }
+            current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        return result
+    }
+
+    private static func family(for domain: String) -> DomainFamily? {
+        switch domain {
+        case NSURLErrorDomain:
+            return .url
+        case AVFoundationErrorDomain:
+            return .avFoundation
+        case "CoreMediaErrorDomain":
+            return .coreMedia
+        case NSOSStatusErrorDomain:
+            return .osStatus
+        case "HTTP", "HTTPErrorDomain":
+            return .http
+        default:
+            return nil
+        }
+    }
+
+    private static func cause(for observations: [Observation]) -> PlaybackFailurePresentation.Cause {
+        for observation in observations where observation.family == .http {
+            if let cause = specificCause(for: observation) { return cause }
+        }
+        for observation in observations {
+            if let cause = specificCause(for: observation) { return cause }
+        }
+        if observations.contains(where: { $0.family == .coreMedia }) { return .media }
+        return .unknown
+    }
+
+    private static func specificCause(
+        for observation: Observation
+    ) -> PlaybackFailurePresentation.Cause? {
+        switch observation.family {
+        case .url:
+            switch observation.code {
+                case URLError.timedOut.rawValue:
+                    return .some(.timeout)
+                case URLError.userAuthenticationRequired.rawValue,
+                     URLError.userCancelledAuthentication.rawValue:
+                    return .some(.authorization)
+                case URLError.secureConnectionFailed.rawValue,
+                     URLError.serverCertificateHasBadDate.rawValue,
+                     URLError.serverCertificateUntrusted.rawValue,
+                     URLError.serverCertificateHasUnknownRoot.rawValue,
+                     URLError.serverCertificateNotYetValid.rawValue,
+                     URLError.clientCertificateRejected.rawValue,
+                     URLError.clientCertificateRequired.rawValue:
+                    return .some(.secureConnection)
+                case URLError.cannotFindHost.rawValue,
+                     URLError.cannotConnectToHost.rawValue,
+                     URLError.networkConnectionLost.rawValue,
+                     URLError.dnsLookupFailed.rawValue,
+                     URLError.notConnectedToInternet.rawValue,
+                     URLError.internationalRoamingOff.rawValue,
+                     URLError.callIsActive.rawValue,
+                     URLError.dataNotAllowed.rawValue:
+                    return .some(.network)
+                case URLError.fileDoesNotExist.rawValue,
+                     URLError.resourceUnavailable.rawValue:
+                    return .some(.unavailable)
+                case URLError.badServerResponse.rawValue,
+                     URLError.cannotParseResponse.rawValue:
+                    return .some(.service)
+                default:
+                    return nil
+            }
+        case .avFoundation:
+            switch AVError.Code(rawValue: observation.code) {
+                case .decodeFailed, .invalidSourceMedia, .fileFormatNotRecognized,
+                     .fileFailedToParse, .decoderNotFound, .operationNotSupportedForAsset,
+                     .decoderTemporarilyUnavailable, .incompatibleAsset, .failedToParse,
+                     .undecodableMediaData:
+                    return .some(.format)
+                case .contentIsProtected:
+                    return .some(.protectedContent)
+                case .contentIsNotAuthorized:
+                    return .some(.authorization)
+                case .failedToLoadMediaData:
+                    return .some(.media)
+                case .serverIncorrectlyConfigured:
+                    return .some(.service)
+                default:
+                    return nil
+            }
+        case .coreMedia:
+            return nil
+        case .osStatus:
+            return nil
+        case .http:
+            switch observation.code {
+                case 401, 403:
+                    return .some(.authorization)
+                case 404, 410:
+                    return .some(.unavailable)
+                case 408, 504:
+                    return .some(.timeout)
+                case 429, 500...599:
+                    return .some(.service)
+                default:
+                    return nil
+            }
+        }
+    }
+
+    private static func message(for cause: PlaybackFailurePresentation.Cause) -> String {
+        switch cause {
+        case .authorization:
+            return "The stream authorization was rejected."
+        case .unavailable:
+            return "The stream is no longer available."
+        case .timeout:
+            return "The stream connection timed out."
+        case .network:
+            return "Apple TV could not reach the stream."
+        case .secureConnection:
+            return "Apple TV could not establish a secure stream connection."
+        case .format:
+            return "This stream uses a format Apple TV could not play."
+        case .protectedContent:
+            return "The protected stream could not be opened."
+        case .service:
+            return "The stream server returned an error."
+        case .media:
+            return "The media stream could not be loaded."
+        case .unknown:
+            return "This stream could not be played."
+        }
+    }
+
+    private static func makeSupportCode(
+        observations: [Observation],
+        latestObservation: Observation?
+    ) -> String {
+        var selected: [Observation] = []
+        if let first = observations.first { selected.append(first) }
+        for observation in observations.dropFirst() where specificCause(for: observation) != nil {
+            if !selected.contains(observation) { selected.append(observation) }
+            if selected.count == maximumSupportObservations { break }
+        }
+        for observation in observations where selected.count < maximumSupportObservations {
+            if !selected.contains(observation) { selected.append(observation) }
+        }
+        if let latestObservation, !selected.contains(latestObservation) {
+            if selected.count == maximumSupportObservations { selected.removeLast() }
+            selected.append(latestObservation)
+        }
+
+        let components = selected.map {
+            if $0.family == .http, (100...599).contains($0.code) {
+                return "\($0.family.rawValue)\($0.code)"
+            }
+            return "\($0.family.rawValue)\(numericToken($0.code))"
+        }
+        return components.isEmpty ? "P-UNKNOWN" : "P-" + components.joined(separator: "-")
+    }
+
+    private static func numericToken(_ value: Int) -> String {
+        guard (-999_999...999_999).contains(value) else { return "X" }
+        if value < 0 { return "N\(String(value).dropFirst())" }
+        if value > 0 { return "P\(value)" }
+        return "Z"
+    }
+}
+
 @MainActor
 final class PlaybackSession: ObservableObject, Identifiable {
     let id = UUID()
@@ -1629,11 +1886,24 @@ final class PlaybackSession: ObservableObject, Identifiable {
                 clearPreparationHandlers()
             }
         case .failed:
-            failPreparation("This stream could not be played. Return to browse and try again.")
+            let item = player.currentItem
+            let event = item?.errorLog()?.events.last
+            let diagnostic = PlaybackFailureClassifier.classify(
+                error: item?.error as NSError?,
+                fallbackDomain: errorDomain,
+                fallbackCode: errorCode,
+                latestErrorLog: event.map {
+                    PlaybackFailureLogEvidence(
+                        errorDomain: $0.errorDomain,
+                        errorCode: $0.errorStatusCode
+                    )
+                }
+            )
+            failPreparation(
+                "\(diagnostic.message) Support code: \(diagnostic.supportCode). Return to browse and try again."
+            )
             #if DEBUG
-            if let errorDomain, let errorCode {
-                print("AVPlayer item failed [\(errorDomain) \(errorCode)]")
-            }
+            print("AVPlayer item failed [\(diagnostic.supportCode)]")
             #endif
         default:
             isReady = false
