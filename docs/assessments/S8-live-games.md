@@ -1,6 +1,6 @@
 # S8 live-game incident — September 27
 
-Baseline `29fb03c`, released app `ff68e4b` (1.0 build 10). Joe reports no available live games in both Sports and Fantasy Zone around 12:51 EDT. Assignment: `docs/assignments/S8-live-games.md`. No source modification, build-number change, release or production mutation has been made.
+Baseline `29fb03c`, released app `ff68e4b` (1.0 build 10). Joe initially reported no available live games in both Sports and Fantasy Zone around 12:51 EDT, then supplied a photo confirming an AVPlayer failure after selection. Assignment: `docs/assignments/S8-live-games.md`. Local diagnostic improvement `5b6a681` is verified; the underlying transport failure is unresolved. No build-number change, release or production mutation has been made.
 
 ## Measured
 
@@ -15,7 +15,7 @@ Baseline `29fb03c`, released app `ff68e4b` (1.0 build 10). Joe reports no availa
 
 `AppModel.makePlaybackSession(for target:)` and Quick Switch eligibility require live phase. This prevents returning to a pregame stream through Quick Switch. Initial selection instead calls `makePlaybackSession(for item:)` directly and is not blocked by that target guard. An early investigation hypothesis that the target guard blocked initial play was corrected after tracing callers; it is not an established cause of Joe's report.
 
-Provider catalog refresh/matching and stale device caches remain hypotheses without device evidence. A schedule match without a provider feed legitimately creates an unplayable event row. No Seasons4U playback, provider catalog probe, simulator operation, Apple TV inspection or credential disclosure occurred. The user was asked whether titles are missing or visible but unplayable; that distinction remains pending.
+At this initial checkpoint, provider catalog refresh/matching and stale device caches remained hypotheses without device evidence. A schedule match without a provider feed legitimately creates an unplayable event row. No Seasons4U playback or simulator operation occurred. The subsequent photo below resolved the title-versus-playback ambiguity.
 
 Services independently reviewed phase and enrichment code using GPT-5.6 Sol, medium, with no edits or runtime use. PM's isolated `.build/s8` diagnostic compile completed successfully; S8-DIAGNOSTIC compilation ownership is released. No simulator or shared device state was changed.
 
@@ -28,3 +28,11 @@ PM inspected existing Seasons4U browser context without selecting a feed or play
 The existing dynamic request routes match the observed US/international and alternate menu call shapes. The relationship between legacy type-14/15 direct-HLS construction and the current NFL+ menu is unverified; no feed has been removed, reprioritized or replaced on that hypothesis. Requests for public JavaScript returned errors and browser asset navigation was blocked; no source was obtained through those attempts.
 
 Playback confirmed player/FairPlay, parser and PlayerScreen source is unchanged between build 9 and build 10, except for the separate AppModel/SeasonsClient selection-time URL refresh. This narrows the investigation but does not prove provider fault. Playback has a bounded safe-error-code implementation assignment. One real-stream test is pending Joe's confirmation that other streams are stopped; no concurrent probe is allowed.
+
+## Local diagnostic acceptance
+
+Playback commit `cd2cc67` was integrated as `5b6a681` on `codex/s8-live-games`. A failed AVPlayer item now produces an allowlisted, bounded support code and a friendly known cause, rather than discarding all failure evidence. No URLs, arbitrary domains, localized error strings, headers, response bodies, identifiers or credential values are included. The existing preparation timeout and media selection/player configuration remain unchanged. See `S8-playback.md` for ownership and limitations; this is diagnostic support, not a demonstrated fix for Joe's stream failure.
+
+PM ran fresh `scripts/team-check.sh smoke`, `scripts/test-playback-failure.sh` (89 checks), and `scripts/team-check.sh build`; all passed on the integrated source. Logs are retained under ignored `.build/s8`, with existing Debug/Internal token values redacted before writing. No simulator was launched. SecOps independently accepted `cd2cc67` with no security blocker (GPT-5.6 Luna, medium). PM build ownership is released.
+
+At 13:05:57 EDT, a further public ESPN read confirmed nine NFL games actually in progress, including Patriots/Jaguars. Provider inspection started no media; the existing Chrome DRM player was observed paused and left unchanged. PM closed its temporary catalog/status/source-inspection tabs. Joe's device test and selection details remain pending; there has been no live playback test, new TestFlight upload, production modification or account/access change.
