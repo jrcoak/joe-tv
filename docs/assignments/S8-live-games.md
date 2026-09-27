@@ -7,3 +7,11 @@ PM owns integration branch `codex/s8-live-games`, live read-only metadata checks
 Production schedule and public NFL scoreboard were read at 12:53 EDT without exposing credentials. Published snapshot was generated September 27 at 03:00 EDT, with 147 events. Both sources contain the nine NFL games starting at 13:00 EDT. At inspection their status is scheduled; Sports keeps pregame events under Upcoming. The user was asked whether titles are missing or listed but unplayable. No specific device-side cause has yet been established.
 
 Local diagnosis and corrections are authorized by the current incident report; a new release, production deployment or remote installation requires specific delivery authorization. No credentials, signing, build number, playback engine or production configuration changes are assigned.
+
+## Playback failure clarification
+
+Joe's photo confirms the full-player AVPlayerItem failure state, not an absent event or pre-session unavailable-feed error. Initial pregame launch is not blocked by the Quick Switch phase guard; the earlier hypothesis was corrected. The current focus is the failing playback route. Provider browser inspection is read-only: no active incident, current Week 3 and four Patriots/Jaguars feed choices; account network is shown unlocked. These do not prove stream success.
+
+Playback is assigned a bounded local diagnostic fix, baseline `29fb03c`: `Models.swift` new pure sanitized failure classification plus `PlaybackSession.handlePlayerStatus` only, a dedicated offline test file/runner, and `docs/assessments/S8-playback.md`. Preserve playback selection, AVPlayer setup, DRM, captions, retry policy, settings and project configuration. Expose only allowlisted error-domain categories and numeric codes/HTTP status; never URLs, arbitrary localized errors, headers, keys, payloads or server addresses. GPT-5.6 Sol, medium. Playback owns offline compiler execution in its own worktree through its test checkpoint; no simulator, media, provider request or release.
+
+PM requested coordination for one controlled provider test; no stream starts until Joe confirms other device streams are stopped and PM reconciles the existing browser player. Any granted test will have one owner and explicit cleanup.

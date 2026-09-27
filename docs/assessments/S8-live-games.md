@@ -18,3 +18,13 @@ Baseline `29fb03c`, released app `ff68e4b` (1.0 build 10). Joe reports no availa
 Provider catalog refresh/matching and stale device caches remain hypotheses without device evidence. A schedule match without a provider feed legitimately creates an unplayable event row. No Seasons4U playback, provider catalog probe, simulator operation, Apple TV inspection or credential disclosure occurred. The user was asked whether titles are missing or visible but unplayable; that distinction remains pending.
 
 Services independently reviewed phase and enrichment code using GPT-5.6 Sol, medium, with no edits or runtime use. PM's isolated `.build/s8` diagnostic compile completed successfully; S8-DIAGNOSTIC compilation ownership is released. No simulator or shared device state was changed.
+
+## User photo and provider inspection
+
+Joe clarified that opening game links produces the full-player failure overlay; his photo shows “This stream could not be played. Return to browse and try again.” This is specifically `AVPlayerItem.Status.failed`, not the preparation timeout or a pre-session missing-feed error. The released UI discards the underlying error evidence. Exact game/feed is not yet identified. The earlier schedule/pregame interpretation does not explain this failure.
+
+PM inspected existing Seasons4U browser context without selecting a feed or playing media. The account's current network is shown unlocked. The current Player catalog selects Week 3 and lists Patriots/Jaguars with four feed rows. The provider status page reports all services operational; this does not prove that individual feeds work. The menu uses channel, channel-int, dvr and dvr-int requests, alternate live/DVR identities, and a separate NFL+ action. No account/access settings changed.
+
+The existing dynamic request routes match the observed US/international and alternate menu call shapes. The relationship between legacy type-14/15 direct-HLS construction and the current NFL+ menu is unverified; no feed has been removed, reprioritized or replaced on that hypothesis. Requests for public JavaScript returned errors and browser asset navigation was blocked; no source was obtained through those attempts.
+
+Playback confirmed player/FairPlay, parser and PlayerScreen source is unchanged between build 9 and build 10, except for the separate AppModel/SeasonsClient selection-time URL refresh. This narrows the investigation but does not prove provider fault. Playback has a bounded safe-error-code implementation assignment. One real-stream test is pending Joe's confirmation that other streams are stopped; no concurrent probe is allowed.
