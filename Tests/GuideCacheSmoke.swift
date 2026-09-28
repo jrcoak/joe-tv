@@ -11,8 +11,23 @@ private final class TestClock: @unchecked Sendable {
     func advance() { lock.lock(); defer { lock.unlock() }; value.addTimeInterval(300) }
 }
 
+private final class JoinProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var joined = false
+    func record() { lock.lock(); defer { lock.unlock() }; joined = true }
+    private var hasJoined: Bool { lock.lock(); defer { lock.unlock() }; return joined }
+    func wait() async {
+        for _ in 0..<1_000 {
+            if hasJoined { return }
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        fatalError("Timed out waiting for the overlapping sports caller to join the in-flight load")
+    }
+}
+
 private enum Reply {
     case http(Int, Data, String?)
+    case held(Int, Data, String?, DispatchSemaphore)
     case transport
 }
 
@@ -49,12 +64,18 @@ private final class StubProtocol: URLProtocol {
         case .transport:
             client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
         case .http(let status, let body, let etag):
-            let headers = etag.map { ["ETag": $0] }
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: body)
-            client?.urlProtocolDidFinishLoading(self)
+            deliver(status: status, body: body, etag: etag)
+        case .held(let status, let body, let etag, let gate):
+            gate.wait()
+            deliver(status: status, body: body, etag: etag)
         }
+    }
+    private func deliver(status: Int, body: Data, etag: String?) {
+        let headers = etag.map { ["ETag": $0] }
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
 }
@@ -124,13 +145,17 @@ private final class Harness {
         defaults.removePersistentDomain(forName: suite)
         try! FileManager.default.removeItem(at: directory)
     }
-    func provider(failWrite: Bool = false) -> XMLTVGuideProvider {
+    func provider(
+        failWrite: Bool = false,
+        sportsScheduleJoinObserver: @escaping @Sendable () -> Void = {}
+    ) -> XMLTVGuideProvider {
         let suite = suite
         let clock = clock
         return XMLTVGuideProvider(
             configuration: MediaAPIConfiguration(baseURL: URL(string: "https://guide-cache.invalid")!, readToken: String(repeating: "synthetic-test-token-", count: 2)),
             session: session, defaults: { UserDefaults(suiteName: suite)! }, cacheDirectory: directory,
-            now: { clock.now() }, writeCache: { data, url in
+            now: { clock.now() }, sportsScheduleJoinObserver: sportsScheduleJoinObserver,
+            writeCache: { data, url in
                 if failWrite { throw CocoaError(.fileWriteNoPermission) }
                 try data.write(to: url, options: .atomic)
             }
@@ -162,23 +187,25 @@ private final class Harness {
         else { check(result.generatedAt == ISO8601DateFormatter.fractional.date(from: "2026-09-16T12:00:00.123Z"), "Publisher generatedAt changed") }
     }
     func error(_ provider: XMLTVGuideProvider, _ expected: String) async {
-        do { _ = try await load(provider); fatalError("Expected \(expected)") }
+        let actual = await outcome(provider)
+        check(actual == expected, "Expected \(expected), got \(actual)")
+    }
+    func outcome(_ provider: XMLTVGuideProvider) async -> String {
+        do { _ = try await load(provider); return "success" }
         catch {
-            let actual: String
             switch error {
-            case EPGServiceError.invalidGuide: actual = "guide-invalid"
-            case EPGServiceError.invalidSportsSchedule: actual = "sports-invalid"
-            case EPGServiceError.refreshThrottled: actual = "throttled"
-            case EPGServiceError.authorizationInvalid: actual = "401"
-            case EPGServiceError.guideNotPublished: actual = "404"
-            case EPGServiceError.sportsScheduleNotPublished: actual = "404"
-            case EPGServiceError.serviceNotConfigured: actual = "503"
-            case EPGServiceError.serverStatus(let status): actual = String(status)
-            case is URLError: actual = "transport"
-            case is CocoaError: actual = "write"
+            case EPGServiceError.invalidGuide: return "guide-invalid"
+            case EPGServiceError.invalidSportsSchedule: return "sports-invalid"
+            case EPGServiceError.refreshThrottled: return "throttled"
+            case EPGServiceError.authorizationInvalid: return "401"
+            case EPGServiceError.guideNotPublished: return "404"
+            case EPGServiceError.sportsScheduleNotPublished: return "404"
+            case EPGServiceError.serviceNotConfigured: return "503"
+            case EPGServiceError.serverStatus(let status): return String(status)
+            case is URLError: return "transport"
+            case is CocoaError: return "write"
             default: fatalError("Unexpected error type: \(error)")
             }
-            check(actual == expected, "Expected \(expected), got \(actual)")
         }
     }
     var invalid: String { kind == .guide ? "guide-invalid" : "sports-invalid" }
@@ -200,6 +227,14 @@ private final class Harness {
     }
 }
 
+private func waitForRequestCount(_ count: Int, on wire: Wire) async {
+    for _ in 0..<1_000 {
+        if wire.requests.count == count { return }
+        try? await Task.sleep(nanoseconds: 1_000_000)
+    }
+    fatalError("Timed out waiting for \(count) intercepted request(s)")
+}
+
 private extension ISO8601DateFormatter {
     static var fractional: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
@@ -215,6 +250,78 @@ enum GuideCacheSmoke {
         print("Guide cache lifecycle smoke passed: both publications, exact bytes/metadata/headers, isolated recreation and failures")
     }
     private static func run(_ kind: Kind) async throws {
+        if kind == .sports {
+            // Overlapping callers must share the in-flight refresh. A throttled
+            // follower must not return the pre-refresh cache while the leader
+            // is still writing a fresh response.
+            do {
+                let h = try Harness(kind); defer { h.close() }
+                try h.seed(body: h.old, success: h.prior)
+                let gate = DispatchSemaphore(value: 0)
+                let join = JoinProbe()
+                let p = h.provider(sportsScheduleJoinObserver: { join.record() })
+                h.wire.enqueue(.held(200, h.new, "new-tag", gate))
+                async let first = h.load(p)
+                await waitForRequestCount(1, on: h.wire)
+                async let second = h.load(p)
+                await join.wait()
+                gate.signal()
+                let results = try await (first, second)
+                check(results.0.titles == ["New"] && results.1.titles == ["New"],
+                      "sports: overlapping refresh returned stale cached content")
+                h.state(body: h.new, etag: "new-tag", success: h.clock.now(), attempt: h.clock.now(), requests: 1)
+
+                // A completed successful task must not remain installed.
+                h.clock.advance()
+                h.wire.enqueue(.http(200, h.old, "later-tag"))
+                try await h.expect(p, titles: ["Old"], success: h.clock.now())
+                h.state(body: h.old, etag: "later-tag", success: h.clock.now(), attempt: h.clock.now(), requests: 2)
+            }
+
+            // The follower also shares a fresh result when no cache exists;
+            // it must not observe refreshThrottled while the leader is in flight.
+            do {
+                let h = try Harness(kind); defer { h.close() }
+                let gate = DispatchSemaphore(value: 0)
+                let join = JoinProbe()
+                let p = h.provider(sportsScheduleJoinObserver: { join.record() })
+                h.wire.enqueue(.held(200, h.new, "new-tag", gate))
+                async let first = h.load(p)
+                await waitForRequestCount(1, on: h.wire)
+                async let second = h.load(p)
+                await join.wait()
+                gate.signal()
+                let results = try await (first, second)
+                check(results.0.titles == ["New"] && results.1.titles == ["New"],
+                      "sports: cacheless follower did not share the fresh in-flight result")
+                h.state(body: h.new, etag: "new-tag", success: h.clock.now(), attempt: h.clock.now(), requests: 1)
+            }
+
+            // Failed shared tasks must also clear so a later refresh can recover.
+            do {
+                let h = try Harness(kind); defer { h.close() }
+                try h.seed(body: h.old, success: h.prior)
+                let gate = DispatchSemaphore(value: 0)
+                let join = JoinProbe()
+                let p = h.provider(sportsScheduleJoinObserver: { join.record() })
+                h.wire.enqueue(.held(500, h.new, "rejected", gate))
+                async let first = h.outcome(p)
+                await waitForRequestCount(1, on: h.wire)
+                async let second = h.outcome(p)
+                await join.wait()
+                gate.signal()
+                let outcomes = await (first, second)
+                check(outcomes.0 == "500" && outcomes.1 == "500",
+                      "sports: overlapping callers did not share the refresh failure")
+                h.state(body: h.old, etag: "old-tag", success: h.prior, attempt: h.clock.now(), requests: 1)
+
+                h.clock.advance()
+                h.wire.enqueue(.http(200, h.new, "recovered-tag"))
+                try await h.expect(p, titles: ["New"], success: h.clock.now())
+                h.state(body: h.new, etag: "recovered-tag", success: h.clock.now(), attempt: h.clock.now(), requests: 2)
+            }
+        }
+
         // Replacement, persisted revalidation, untagged replacement, and no stale validator.
         do {
             let h = try Harness(kind); defer { h.close() }

@@ -56,10 +56,12 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
     private let cacheDirectory: URL
     private let now: @Sendable () -> Date
     private let writeCache: @Sendable (Data, URL) throws -> Void
+    private let sportsScheduleJoinObserver: @Sendable () -> Void
     private var lastRefresh: Date?
     private var lastAttempt: Date?
     private var sportsLastRefresh: Date?
     private var sportsLastAttempt: Date?
+    private var sportsScheduleLoadTask: Task<SportsScheduleSnapshot, Error>?
     private var sportsDetailLastAttempts: [String: Date] = [:]
     private var sportsDetailMemoryCache: [String: SportsEventDetail] = [:]
 
@@ -74,6 +76,7 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         let defaults = UserDefaults.standard
         self.now = { Date() }
         self.writeCache = { try $0.write(to: $1, options: .atomic) }
+        self.sportsScheduleJoinObserver = {}
         self.session = session
         self.defaults = defaults
         do {
@@ -105,6 +108,7 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         defaults makeDefaults: () -> UserDefaults,
         cacheDirectory: URL,
         now: @escaping @Sendable () -> Date,
+        sportsScheduleJoinObserver: @escaping @Sendable () -> Void = {},
         writeCache: @escaping @Sendable (Data, URL) throws -> Void = {
             try $0.write(to: $1, options: .atomic)
         }
@@ -118,6 +122,7 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
         self.cacheURL = cacheDirectory.appending(path: "seasonstv-guide.xmltv")
         self.sportsCacheURL = cacheDirectory.appending(path: "seasonstv-sports-schedule.json")
         self.now = now
+        self.sportsScheduleJoinObserver = sportsScheduleJoinObserver
         self.writeCache = writeCache
         self.lastRefresh = defaults.object(forKey: Self.lastRefreshKey) as? Date
         self.lastAttempt = defaults.object(forKey: Self.lastAttemptKey) as? Date
@@ -149,7 +154,23 @@ actor XMLTVGuideProvider: EPGProviding, SportsScheduleProviding, SportsEventDeta
 
     func loadSportsSchedule() async throws -> SportsScheduleSnapshot {
         let configuration = try requireConfiguration()
-        return try await currentSportsSchedule(configuration: configuration)
+        if let sportsScheduleLoadTask {
+            sportsScheduleJoinObserver()
+            return try await sportsScheduleLoadTask.value
+        }
+
+        let task = Task {
+            try await currentSportsSchedule(configuration: configuration)
+        }
+        sportsScheduleLoadTask = task
+        do {
+            let snapshot = try await task.value
+            sportsScheduleLoadTask = nil
+            return snapshot
+        } catch {
+            sportsScheduleLoadTask = nil
+            throw error
+        }
     }
 
     func loadSportsEventDetail(
