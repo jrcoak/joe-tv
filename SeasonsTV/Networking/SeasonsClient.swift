@@ -208,6 +208,8 @@ enum FootballPlaybackRefresh {
 }
 
 final class SeasonsClient {
+    static let playbackUserAgent = "Joe-TV/1.0 (AppleTV; tvOS)"
+
     let baseURL = URL(string: "https://seasons4u.com")!
     private let cookieStorage: HTTPCookieStorage
     private let session: URLSession
@@ -221,7 +223,7 @@ final class SeasonsClient {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.httpAdditionalHeaders = [
             "Accept-Language": "en-US,en;q=0.9",
-            "User-Agent": "Joe-TV/1.0 (AppleTV; tvOS)"
+            "User-Agent": Self.playbackUserAgent
         ]
         self.session = URLSession(configuration: configuration)
     }

@@ -1779,11 +1779,17 @@ final class PlaybackSession: ObservableObject, Identifiable {
     private var readyHandler: (() -> Void)?
     private var failureHandler: ((String) -> Void)?
 
-    init(title: String, url: URL, startAtLiveEdge: Bool = false) {
+    init(
+        title: String,
+        url: URL,
+        httpUserAgent: String? = nil,
+        startAtLiveEdge: Bool = false
+    ) {
         self.title = title
         self.startAtLiveEdge = startAtLiveEdge
         self.isLivePlayback = startAtLiveEdge
-        let item = AVPlayerItem(url: url)
+        let assetOptions = httpUserAgent.map { [AVURLAssetHTTPUserAgentKey: $0] }
+        let item = AVPlayerItem(asset: AVURLAsset(url: url, options: assetOptions))
         item.automaticallyPreservesTimeOffsetFromLive = startAtLiveEdge
         let playback = Self.makePlayer(item: item)
         self.player = playback.player

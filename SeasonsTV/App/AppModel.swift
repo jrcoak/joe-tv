@@ -1240,10 +1240,20 @@ final class AppModel: ObservableObject {
         #endif
         switch playback {
         case .hls(let url):
-            return PlaybackSession(title: item.title, url: url, startAtLiveEdge: startAtLiveEdge)
+            return PlaybackSession(
+                title: item.title,
+                url: url,
+                httpUserAgent: SeasonsClient.playbackUserAgent,
+                startAtLiveEdge: startAtLiveEdge
+            )
         case .request(let request):
             let url = try await client.resolveStream(request)
-            return PlaybackSession(title: item.title, url: url, startAtLiveEdge: startAtLiveEdge)
+            return PlaybackSession(
+                title: item.title,
+                url: url,
+                httpUserAgent: SeasonsClient.playbackUserAgent,
+                startAtLiveEdge: startAtLiveEdge
+            )
         case .drmPage(let pageURL):
             return try await makeDRMPlaybackSession(
                 title: item.title,
@@ -1767,7 +1777,12 @@ final class AppModel: ObservableObject {
             }
             #endif
             let url = try await client.resolveStream(request)
-            return PlaybackSession(title: channel.name, url: url, startAtLiveEdge: true)
+            return PlaybackSession(
+                title: channel.name,
+                url: url,
+                httpUserAgent: SeasonsClient.playbackUserAgent,
+                startAtLiveEdge: true
+            )
         case .veryLocal(let reference):
             let url = try await veryLocalClient.resolveStream(reference)
             return PlaybackSession(title: channel.name, url: url, startAtLiveEdge: true)
